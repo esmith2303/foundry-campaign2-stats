@@ -24,7 +24,7 @@
     ]
   },
   "socket": true,
-  "url": "",
-  "manifest": "",
-  "download": ""
+  "url": "https://github.com/esmith2303/foundry-campaign2-stats",
+  "manifest": "https://raw.githubusercontent.com/esmith2303/foundry-campaign2-stats/master/module.json",
+  "download": "https://github.com/esmith2303/foundry-campaign2-stats/releases/download/latest/midi-qol-stats-uploader.zip"
 }
