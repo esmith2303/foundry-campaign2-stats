@@ -10,31 +10,15 @@ export class UploaderUI {
     Hooks.on("getSceneControlButtons", (controls) => {
       if (!game.user.isGM) return;
 
-      const isV13 = !Array.isArray(controls);
-
-      if (isV13) {
-        // v13+: controls is an object, controls.tokens.tools is an object
-        controls.tokens.tools.uploadStats = {
-          name: "uploadStats",
-          title: "Upload Midi-QOL Stats",
-          icon: "fa-solid fa-cloud-arrow-up",
-          order: Object.keys(controls.tokens.tools).length,
-          button: true,
-          visible: true,
-          onChange: () => UploaderUI.#showUploadDialog(moduleId),
-        };
-      } else {
-        // v11/v12: controls is an array, tools is an array
-        const tokenControls = controls.find((c) => c.name === "token");
-        if (!tokenControls) return;
-        tokenControls.tools.push({
-          name: "upload-stats",
+      const tokenControls = controls["tokens"];
+      if (tokenControls) {
+        tokenControls.tools["midi-qol-upload"] = {
+          name: "midi-qol-upload",
           title: "Upload Midi-QOL Stats",
           icon: "fas fa-cloud-upload-alt",
           button: true,
-          visible: true,
           onClick: () => UploaderUI.#showUploadDialog(moduleId),
-        });
+        };
       }
     });
   }
