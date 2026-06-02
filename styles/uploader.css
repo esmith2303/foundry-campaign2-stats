@@ -1,0 +1,23 @@
+.stats-uploader-dialog {
+  padding: 0.5rem 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.stats-uploader-dialog .endpoint-label {
+  font-size: 0.8rem;
+  color: var(--color-text-dark-secondary, #555);
+  word-break: break-all;
+}
+
+.stats-uploader-dialog code {
+  background: var(--color-bg, #f0f0e0);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 0.75rem;
+}
+
+.stats-uploader-dialog .warn {
+  color: var(--color-level-warning, #b8860b);
+  font-style: italic;
+}

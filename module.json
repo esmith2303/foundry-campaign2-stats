@@ -1,0 +1,30 @@
+{
+  "id": "dnd-group-campaign-2-stats",
+  "title": "Stats Uploader",
+  "description": "Collects roll statistics from midi-qol and lets the GM upload them to a PostgreSQL or MySQL database via a configurable API endpoint.",
+  "version": "1.0.0",
+  "compatibility": {
+    "minimum": "11",
+    "verified": "13"
+  },
+  "authors": [
+    {
+      "name": "Elian"
+    }
+  ],
+  "esmodules": ["scripts/main.mjs"],
+  "styles": ["styles/uploader.css"],
+  "languages": [],
+  "relationships": {
+    "requires": [
+      {
+        "id": "midi-qol",
+        "type": "module"
+      }
+    ]
+  },
+  "socket": true,
+  "url": "",
+  "manifest": "",
+  "download": ""
+}
