@@ -1,20 +1,41 @@
 /**
  * UploaderUI — GM toolbar button + confirmation dialog
+ *
+ * v13+: controls is an object keyed by name, tools is also an object.
+ *       Buttons use onChange instead of onClick.
+ * v11/v12: controls is an array, tools is an array, uses onClick.
  */
 export class UploaderUI {
   static addToolbarButton(moduleId) {
     Hooks.on("getSceneControlButtons", (controls) => {
-      const tokenControls = controls.find((c) => c.name === "token");
-      if (!tokenControls) return;
+      if (!game.user.isGM) return;
 
-      tokenControls.tools.push({
-        name: "upload-stats",
-        title: "Upload Midi-QOL Stats to Database",
-        icon: "fas fa-cloud-upload-alt",
-        button: true,
-        onClick: () => UploaderUI.#showUploadDialog(moduleId),
-        visible: game.user.isGM,
-      });
+      const isV13 = !Array.isArray(controls);
+
+      if (isV13) {
+        // v13+: controls is an object, controls.tokens.tools is an object
+        controls.tokens.tools.uploadStats = {
+          name: "uploadStats",
+          title: "Upload Midi-QOL Stats",
+          icon: "fa-solid fa-cloud-arrow-up",
+          order: Object.keys(controls.tokens.tools).length,
+          button: true,
+          visible: true,
+          onChange: () => UploaderUI.#showUploadDialog(moduleId),
+        };
+      } else {
+        // v11/v12: controls is an array, tools is an array
+        const tokenControls = controls.find((c) => c.name === "token");
+        if (!tokenControls) return;
+        tokenControls.tools.push({
+          name: "upload-stats",
+          title: "Upload Midi-QOL Stats",
+          icon: "fas fa-cloud-upload-alt",
+          button: true,
+          visible: true,
+          onClick: () => UploaderUI.#showUploadDialog(moduleId),
+        });
+      }
     });
   }
 
