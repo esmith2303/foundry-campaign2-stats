@@ -3,7 +3,7 @@ import { StatsUploader } from "./StatsUploader.mjs";
 import { UploaderUI } from "./UploaderUI.mjs";
 import { registerSettings } from "./settings.mjs";
 
-const MODULE_ID = "midi-qol-stats-uploader";
+const MODULE_ID = "dnd-group-campaign-2-stats";
 
 // ── Initialisation ────────────────────────────────────────────────────────────
 
