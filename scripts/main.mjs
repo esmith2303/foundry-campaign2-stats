@@ -9,10 +9,31 @@ Hooks.once("init", () => {
   registerSettings(MODULE_ID);
 
   // Register toolbar button here — getSceneControlButtons fires before ready
-  Hooks.on("getSceneControlButtons", (controls) => {
+  
+});
+
+Hooks.once("ready", () => {
+  if (!game.modules.get("midi-qol")?.active) {
+    ui.notifications.error("Midi-QOL Stats Uploader requires midi-qol to be active.");
+    return;
+  }
+
+  game.modules.get(MODULE_ID).collector = new StatsCollector(MODULE_ID);
+  game.modules.get(MODULE_ID).uploader = new StatsUploader(MODULE_ID);
+
+  console.log(`${MODULE_ID} | Ready`);
+});
+
+Hooks.on("midi-qol.RollComplete", (workflow) => {
+  if (!game.user.isGM) return;
+  const collector = game.modules.get(MODULE_ID)?.collector;
+  if (collector) collector.record(workflow);
+});
+
+Hooks.on("getSceneControlButtons", (controls) => {
     if (!game.user.isGM) return;
 
-    const tokenControls = controls["tokens"];
+    const tokenControls = controls.find(c => c.name === "tokens");
     if (!tokenControls) return;
 
     tokenControls.tools["midi-qol-upload"] = {
@@ -68,22 +89,3 @@ Hooks.once("init", () => {
       },
     };
   });
-});
-
-Hooks.once("ready", () => {
-  if (!game.modules.get("midi-qol")?.active) {
-    ui.notifications.error("Midi-QOL Stats Uploader requires midi-qol to be active.");
-    return;
-  }
-
-  game.modules.get(MODULE_ID).collector = new StatsCollector(MODULE_ID);
-  game.modules.get(MODULE_ID).uploader = new StatsUploader(MODULE_ID);
-
-  console.log(`${MODULE_ID} | Ready`);
-});
-
-Hooks.on("midi-qol.RollComplete", (workflow) => {
-  if (!game.user.isGM) return;
-  const collector = game.modules.get(MODULE_ID)?.collector;
-  if (collector) collector.record(workflow);
-});
