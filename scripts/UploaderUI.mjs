@@ -17,7 +17,7 @@ export class UploaderUI {
           title: "Upload Midi-QOL Stats",
           icon: "fas fa-cloud-upload-alt",
           button: true,
-          onClick: () => UploaderUI.#showUploadDialog(moduleId),
+          onClick: () => UploaderUI.showUploadDialog(moduleId),
         };
       }
     });
