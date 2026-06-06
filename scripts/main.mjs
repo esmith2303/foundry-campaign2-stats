@@ -33,7 +33,7 @@ Hooks.on("midi-qol.RollComplete", (workflow) => {
 Hooks.on("getSceneControlButtons", (controls) => {
     if (!game.user.isGM) return;
 
-    const tokenControls = controls.find(c => c.name === "tokens");
+    const tokenControls = controls["tokens"];
     if (!tokenControls) return;
 
     tokenControls.tools["midi-qol-upload"] = {
