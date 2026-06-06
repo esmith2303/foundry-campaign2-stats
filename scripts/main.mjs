@@ -1,25 +1,78 @@
 import { StatsCollector } from "./StatsCollector.mjs";
 import { StatsUploader } from "./StatsUploader.mjs";
-import { UploaderUI } from "./UploaderUI.mjs";
 import { registerSettings } from "./settings.mjs";
 
 const MODULE_ID = "dnd-group-campaign-2-stats";
-
-// ── Initialisation ────────────────────────────────────────────────────────────
 
 Hooks.once("init", () => {
   console.log(`${MODULE_ID} | Initialising`);
   registerSettings(MODULE_ID);
 
-  // Must be registered here — getSceneControlButtons fires before "ready"
-  UploaderUI.addToolbarButton(MODULE_ID);
+  // Register toolbar button here — getSceneControlButtons fires before ready
+  Hooks.on("getSceneControlButtons", (controls) => {
+    if (!game.user.isGM) return;
+
+    const tokenControls = controls["tokens"];
+    if (!tokenControls) return;
+
+    tokenControls.tools["midi-qol-upload"] = {
+      name: "midi-qol-upload",
+      title: "Upload Midi-QOL Stats",
+      icon: "fas fa-cloud-upload-alt",
+      button: true,
+      onClick: () => {
+        console.log(`${MODULE_ID} | Upload button clicked`);
+
+        const mod = game.modules.get(MODULE_ID);
+        const collector = mod?.collector;
+        const uploader = mod?.uploader;
+
+        if (!collector || !uploader) {
+          ui.notifications.error("Midi-QOL Stats Uploader is not initialised.");
+          return;
+        }
+
+        const apiUrl = game.settings.get(MODULE_ID, "apiUrl") || "(not configured)";
+        const midiActive = game.modules.get("midi-qol")?.active;
+        const now = new Date().toLocaleString();
+
+        new Dialog({
+          title: "Upload Midi-QOL Stats",
+          content: `
+            <div class="stats-uploader-dialog">
+              <p>Upload a snapshot of current midi-qol session stats for all actors.</p>
+              <p><strong>Time:</strong> ${now}</p>
+              <p><strong>Endpoint:</strong> <code>${apiUrl}</code></p>
+              <p><strong>midi-qol:</strong> ${midiActive ? "✔ active" : "✘ not active"}</p>
+              ${apiUrl === "(not configured)" ? '<p style="color:orange">⚠ No API URL set in Module Settings.</p>' : ""}
+            </div>
+          `,
+          buttons: {
+            upload: {
+              icon: '<i class="fas fa-cloud-upload-alt"></i>',
+              label: "Upload Now",
+              callback: () => uploader.snapshotAndUpload(collector),
+            },
+            settings: {
+              icon: '<i class="fas fa-cog"></i>',
+              label: "Settings",
+              callback: () => game.settings.sheet.render(true),
+            },
+            cancel: {
+              icon: '<i class="fas fa-times"></i>',
+              label: "Cancel",
+            },
+          },
+          default: midiActive ? "upload" : "settings",
+        }).render(true);
+      },
+    };
+  });
 });
 
 Hooks.once("ready", () => {
   if (!game.modules.get("midi-qol")?.active) {
-    ui.notifications.error(
-      "Midi-QOL Stats Uploader requires midi-qol to be active."
-    );
+    ui.notifications.error("Midi-QOL Stats Uploader requires midi-qol to be active.");
     return;
   }
 
@@ -28,8 +81,6 @@ Hooks.once("ready", () => {
 
   console.log(`${MODULE_ID} | Ready`);
 });
-
-// ── Listen to midi-qol roll completions ──────────────────────────────────────
 
 Hooks.on("midi-qol.RollComplete", (workflow) => {
   if (!game.user.isGM) return;
