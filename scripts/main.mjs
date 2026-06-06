@@ -41,7 +41,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
       title: "Upload Midi-QOL Stats",
       icon: "fas fa-cloud-upload-alt",
       button: true,
-      onClick: () => {
+      onChange: () => {
         console.log(`${MODULE_ID} | Upload button clicked`);
 
         const mod = game.modules.get(MODULE_ID);
