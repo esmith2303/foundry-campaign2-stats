@@ -93,9 +93,3 @@ Hooks.on("renderSceneControls", () => {
     }).render(true);
   });
 });
-
-Hooks.on("midi-qol.RollComplete", (workflow) => {
-  if (!game.user.isGM) return;
-  const collector = game.modules.get(MODULE_ID)?.collector;
-  if (collector) collector.record(workflow);
-});
