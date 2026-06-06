@@ -2,8 +2,7 @@
  * StatsCollector
  *
  * Reads midi-qol's RollStats from Foundry settings.
- * Stats are stored at game.settings.get("midi-qol", "RollStats")
- * and also accessible via MidiQOL.gameStats.currentStats.
+ * Filters out user-level stats (duplicates of actor stats).
  */
 export class StatsCollector {
   #moduleId;
@@ -13,23 +12,39 @@ export class StatsCollector {
   }
 
   snapshot() {
-    // Try multiple sources — same data, different access paths
     let stats = null;
 
-    // 1. Direct from Foundry settings (most reliable)
     try {
       stats = game.settings.get("midi-qol", "RollStats");
     } catch (e) {
       console.warn(`${this.#moduleId} | Could not read midi-qol RollStats setting`);
     }
 
-    // 2. Fallback to MidiQOL global
     if (!stats || Object.keys(stats).length === 0) {
       stats = globalThis.MidiQOL?.gameStats?.currentStats ?? null;
     }
 
     if (!stats || Object.keys(stats).length === 0) {
-      console.warn(`${this.#moduleId} | No stats available — no rolls have been made this session`);
+      console.warn(`${this.#moduleId} | No stats available`);
+      return null;
+    }
+
+    // Filter out user-level entries — midi-qol records stats for both
+    // the actor (character) and the user (player) for every roll.
+    // We only want actor entries to avoid duplicates.
+    const filtered = {};
+    for (const [id, data] of Object.entries(stats)) {
+      // If this ID belongs to a user (player), skip it
+      const isUser = game.users?.get(id);
+      if (isUser) {
+        console.debug(`${this.#moduleId} | Skipping user-level stats for "${data.name}" (${id})`);
+        continue;
+      }
+      filtered[id] = data;
+    }
+
+    if (Object.keys(filtered).length === 0) {
+      console.warn(`${this.#moduleId} | No actor stats after filtering out users`);
       return null;
     }
 
@@ -37,14 +52,18 @@ export class StatsCollector {
       timestamp: new Date().toISOString(),
       worldId: game.world.id,
       worldName: game.world.title,
-      stats,
+      stats: filtered,
     };
   }
 
   get pendingCount() {
     try {
       const stats = game.settings.get("midi-qol", "RollStats");
-      return Object.keys(stats ?? {}).length;
+      let count = 0;
+      for (const [id] of Object.entries(stats ?? {})) {
+        if (!game.users?.get(id)) count++;
+      }
+      return count;
     } catch {
       return 0;
     }
