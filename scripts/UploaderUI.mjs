@@ -14,8 +14,8 @@ export class UploaderUI {
         title: "Upload Midi-QOL Stats",
         icon: "fas fa-cloud-upload-alt",
         button: true,
-        onClick: () => {
-          console.log("midi-qol-upload | onClick fired");
+        onChange: () => {
+          console.log("midi-qol-upload | onChange fired");
           const mod = game.modules.get(moduleId);
           const collector = mod?.collector;
           const uploader = mod?.uploader;
