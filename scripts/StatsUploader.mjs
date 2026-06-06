@@ -2,28 +2,7 @@
  * StatsUploader
  *
  * Sends a stats snapshot to the configured HTTP endpoint.
- *
- * POST <apiUrl>
- * Headers:
- *   Content-Type: application/json
- *   Authorization: Bearer <apiKey>   (if set)
- *
- * Body:
- * {
- *   "timestamp": "2024-01-01T20:00:00.000Z",
- *   "worldId": "my-world",
- *   "worldName": "My Campaign",
- *   "stats": {
- *     "<actorId>": {
- *       "name": "Actor Name",
- *       "session": { ...counters... },
- *       "lifetime": { ...counters... },
- *       "itemStats": { ... },
- *       "sessionDamageDealtByType": { ... },
- *       ...
- *     }
- *   }
- * }
+ * After a successful upload, resets midi-qol's session counters.
  */
 export class StatsUploader {
   #moduleId;
@@ -63,14 +42,11 @@ export class StatsUploader {
     return { success: true };
   }
 
-  /**
-   * Convenience: snapshot + upload + notify user.
-   */
   async snapshotAndUpload(collector) {
     const snapshot = collector.snapshot();
 
     if (!snapshot) {
-      ui.notifications.warn("Midi-QOL Stats: Could not read stats from midi-qol. Make sure some rolls have been made this session.");
+      ui.notifications.warn("Midi-QOL Stats: No stats to upload — no rolls have been made this session.");
       return;
     }
 
@@ -80,10 +56,20 @@ export class StatsUploader {
     const result = await this.upload(snapshot);
 
     if (result.success) {
-      ui.notifications.info(`Midi-QOL Stats: ✔ Uploaded stats for ${actorCount} actor(s) — ${new Date(snapshot.timestamp).toLocaleTimeString()}`);
+      // Reset midi-qol session counters so next session starts fresh
+      try {
+        await MidiQOL.gameStats.endSession();
+        ui.notifications.info(
+          `Midi-QOL Stats: ✔ Uploaded ${actorCount} actor(s) and reset session counters.`
+        );
+      } catch (e) {
+        console.warn(`${this.#moduleId} | Failed to reset session:`, e);
+        ui.notifications.info(
+          `Midi-QOL Stats: ✔ Uploaded ${actorCount} actor(s) but could not reset session counters.`
+        );
+      }
     } else {
       ui.notifications.error(`Midi-QOL Stats: Upload failed — ${result.error}`);
-      console.error(`${this.#moduleId} | Upload failed:`, result.error);
     }
   }
 }

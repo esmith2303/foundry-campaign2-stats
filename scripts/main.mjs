@@ -41,13 +41,11 @@ Hooks.on("renderSceneControls", () => {
   const btn = document.querySelector('[data-tool="midi-qol-upload"]');
   if (!btn) return;
 
-  // Remove any previous listener to avoid duplicates
   const newBtn = btn.cloneNode(true);
   btn.parentNode.replaceChild(newBtn, btn);
 
   newBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    console.log(`${MODULE_ID} | clicked`);
 
     const mod = game.modules.get(MODULE_ID);
     const collector = mod?.collector;
@@ -61,22 +59,23 @@ Hooks.on("renderSceneControls", () => {
     const apiUrl = game.settings.get(MODULE_ID, "apiUrl") || "(not configured)";
     const midiActive = game.modules.get("midi-qol")?.active;
     const now = new Date().toLocaleString();
+    const actorCount = collector.pendingCount;
 
     new Dialog({
       title: "Upload Midi-QOL Stats",
       content: `
         <div class="stats-uploader-dialog">
-          <p>Upload a snapshot of current midi-qol session stats for all actors.</p>
+          <p>Upload session stats for <strong>${actorCount}</strong> actor(s) and reset session counters.</p>
           <p><strong>Time:</strong> ${now}</p>
           <p><strong>Endpoint:</strong> <code>${apiUrl}</code></p>
-          <p><strong>midi-qol:</strong> ${midiActive ? "✔ active" : "✘ not active"}</p>
+          ${actorCount === 0 ? '<p style="color:orange">⚠ No stats yet — make some rolls first.</p>' : ""}
           ${apiUrl === "(not configured)" ? '<p style="color:orange">⚠ No API URL set in Module Settings.</p>' : ""}
         </div>
       `,
       buttons: {
         upload: {
           icon: '<i class="fas fa-cloud-upload-alt"></i>',
-          label: "Upload Now",
+          label: "Upload & End Session",
           callback: () => uploader.snapshotAndUpload(collector),
         },
         settings: {
@@ -89,7 +88,7 @@ Hooks.on("renderSceneControls", () => {
           label: "Cancel",
         },
       },
-      default: midiActive ? "upload" : "settings",
+      default: actorCount > 0 ? "upload" : "settings",
     }).render(true);
   });
 });
