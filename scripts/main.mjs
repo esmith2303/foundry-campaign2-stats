@@ -3,35 +3,58 @@ import { StatsUploader } from "./StatsUploader.mjs";
 import { registerSettings } from "./settings.mjs";
 
 const MODULE_ID = "dnd-group-campaign-2-stats";
+const TRACKED_FACES = [4, 6, 8, 10, 12, 20];
 
-// ── Dice roll tracker ────────────────────────────────────────────────────────
-// midi-qol doesn't track per-face d20 distribution. We do it ourselves.
+// ── Dice extraction ──────────────────────────────────────────────────────────
 
-function extractD20(roll) {
-  if (!roll) return null;
-  for (const term of roll.terms || []) {
-    if (term.faces === 20 && term.results?.length) {
-      const result = term.results[0];
-      // Only count "active" results — i.e. the kept die when rolling with adv/dis
-      if (result && (result.active === undefined || result.active)) {
-        return result.result;
+function extractAllDice(roll) {
+  // Returns { 4: [results...], 6: [...], 20: [...] }
+  const out = {};
+  if (!roll) return out;
+
+  function visit(term) {
+    if (!term) return;
+    if (TRACKED_FACES.includes(term.faces) && Array.isArray(term.results)) {
+      for (const r of term.results) {
+        if (r && (r.active === undefined || r.active) && typeof r.result === "number") {
+          if (!out[term.faces]) out[term.faces] = [];
+          out[term.faces].push(r.result);
+        }
       }
     }
+    if (Array.isArray(term.terms)) for (const t of term.terms) visit(t);
+    if (Array.isArray(term.rolls)) for (const r of term.rolls) if (r?.terms) for (const t of r.terms) visit(t);
   }
-  return null;
+
+  for (const term of roll.terms || []) visit(term);
+  return out;
 }
 
-async function recordD20(actorId, actorName, face) {
-  if (!game.user.isGM || !actorId || !face) return;
+async function recordDice(actorId, actorName, faceMap) {
+  if (!game.user.isGM || !actorId) return;
+  const totalFaces = Object.keys(faceMap).length;
+  if (!totalFaces) return;
   try {
     const rolls = game.settings.get(MODULE_ID, "diceRolls") || {};
-    if (!rolls[actorId]) rolls[actorId] = { name: actorName, faces: {} };
+    if (!rolls[actorId]) rolls[actorId] = { name: actorName, dice: {} };
     rolls[actorId].name = actorName;
-    rolls[actorId].faces[face] = (rolls[actorId].faces[face] || 0) + 1;
+    if (!rolls[actorId].dice) rolls[actorId].dice = {};
+    for (const [faces, results] of Object.entries(faceMap)) {
+      if (!rolls[actorId].dice[faces]) rolls[actorId].dice[faces] = {};
+      for (const value of results) {
+        rolls[actorId].dice[faces][value] = (rolls[actorId].dice[faces][value] || 0) + 1;
+      }
+    }
     await game.settings.set(MODULE_ID, "diceRolls", rolls);
   } catch (e) {
-    console.warn(`${MODULE_ID} | Failed to record d20:`, e);
+    console.warn(`${MODULE_ID} | Failed to record dice:`, e);
   }
+}
+
+function captureFromRoll(actor, roll) {
+  if (!actor || !roll) return;
+  const faces = extractAllDice(roll);
+  if (Object.keys(faces).length) recordDice(actor.id, actor.name, faces);
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -52,47 +75,37 @@ Hooks.once("ready", () => {
 });
 
 // ── Dice roll capture hooks ──────────────────────────────────────────────────
-// Capture d20 face values from various roll types
 
-Hooks.on("midi-qol.AttackRollComplete", (workflow) => {
+// Midi-qol full workflow — captures attack + damage dice
+Hooks.on("midi-qol.RollComplete", (workflow) => {
   if (!game.user.isGM) return;
-  const face = extractD20(workflow.attackRoll);
-  if (face) recordD20(workflow.actor?.id, workflow.actor?.name, face);
+  const actor = workflow?.actor;
+  if (!actor) return;
+  // Attack roll dice
+  if (workflow.attackRoll) captureFromRoll(actor, workflow.attackRoll);
+  // Damage roll(s) — newer midi-qol uses damageRolls array, older uses damageRoll
+  const damageRolls = workflow.damageRolls ?? (workflow.damageRoll ? [workflow.damageRoll] : []);
+  for (const dr of damageRolls) captureFromRoll(actor, dr);
 });
 
-Hooks.on("dnd5e.rollSavingThrow", (actor, roll) => {
-  const face = extractD20(roll);
-  if (face) recordD20(actor?.id, actor?.name, face);
-});
+// Standalone dnd5e roll hooks for saves, checks, skills, etc.
+Hooks.on("dnd5e.rollSavingThrow", (actor, roll) => captureFromRoll(actor, roll));
+Hooks.on("dnd5e.rollAbilityTest", (actor, roll) => captureFromRoll(actor, roll));
+Hooks.on("dnd5e.rollSkill", (actor, roll) => captureFromRoll(actor, roll));
+Hooks.on("dnd5e.rollDeathSave", (actor, roll) => captureFromRoll(actor, roll));
 
-Hooks.on("dnd5e.rollAbilityTest", (actor, roll) => {
-  const face = extractD20(roll);
-  if (face) recordD20(actor?.id, actor?.name, face);
-});
-
-Hooks.on("dnd5e.rollSkill", (actor, roll) => {
-  const face = extractD20(roll);
-  if (face) recordD20(actor?.id, actor?.name, face);
-});
-
-Hooks.on("dnd5e.rollDeathSave", (actor, roll) => {
-  const face = extractD20(roll);
-  if (face) recordD20(actor?.id, actor?.name, face);
-});
-
-// Fallback for v4+ dnd5e — newer hooks use rollAttackV2 etc.
+// v4+ dnd5e hooks
 Hooks.on("dnd5e.rollAttackV2", (rolls, data) => {
-  if (!rolls?.length) return;
   const actor = data?.subject?.actor || data?.actor;
-  const face = extractD20(rolls[0]);
-  if (face) recordD20(actor?.id, actor?.name, face);
+  for (const r of rolls || []) captureFromRoll(actor, r);
 });
-
 Hooks.on("dnd5e.rollSavingThrowV2", (rolls, data) => {
-  if (!rolls?.length) return;
   const actor = data?.subject || data?.actor;
-  const face = extractD20(rolls[0]);
-  if (face) recordD20(actor?.id, actor?.name, face);
+  for (const r of rolls || []) captureFromRoll(actor, r);
+});
+Hooks.on("dnd5e.rollDamageV2", (rolls, data) => {
+  const actor = data?.subject?.actor || data?.actor;
+  for (const r of rolls || []) captureFromRoll(actor, r);
 });
 
 // ── Toolbar button ───────────────────────────────────────────────────────────
@@ -127,10 +140,10 @@ Hooks.on("renderSceneControls", () => {
       return;
     }
     const apiUrl = game.settings.get(MODULE_ID, "apiUrl") || "(not configured)";
-    const midiActive = game.modules.get("midi-qol")?.active;
     const now = new Date().toLocaleString();
     const actorCount = collector.pendingCount;
-    const diceCount = Object.keys(game.settings.get(MODULE_ID, "diceRolls") || {}).length;
+    const diceData = game.settings.get(MODULE_ID, "diceRolls") || {};
+    const diceCount = Object.keys(diceData).length;
 
     new Dialog({
       title: "Upload Midi-QOL Stats",
@@ -140,8 +153,6 @@ Hooks.on("renderSceneControls", () => {
           <p><strong>Time:</strong> ${now}</p>
           <p><strong>Endpoint:</strong> <code>${apiUrl}</code></p>
           <p><strong>Dice tracked:</strong> ${diceCount} actor(s)</p>
-          ${actorCount === 0 ? '<p style="color:orange">⚠ No stats yet — make some rolls first.</p>' : ""}
-          ${apiUrl === "(not configured)" ? '<p style="color:orange">⚠ No API URL set in Module Settings.</p>' : ""}
         </div>
       `,
       buttons: {
