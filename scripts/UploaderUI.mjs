@@ -23,7 +23,7 @@ export class UploaderUI {
     });
   }
 
-  static async #showUploadDialog(moduleId) {
+  static async showUploadDialog(moduleId) {
     const mod = game.modules.get(moduleId);
     const collector = mod?.collector;
     const uploader = mod?.uploader;
