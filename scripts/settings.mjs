@@ -1,34 +1,73 @@
 /**
- * registerSettings
+ * StatsCollector
  *
- * Registers the module's persistent settings with Foundry.
- * These appear under Settings → Module Settings → Midi-QOL Stats Uploader.
+ * Snapshots midi-qol's RollStats + our custom dice roll tracker.
+ * Filters out user-level duplicates (player vs character).
  */
-export function registerSettings(moduleId) {
-  game.settings.register(moduleId, "apiUrl", {
-    name: "API Endpoint URL",
-    hint: "The URL of your backend endpoint that receives roll data. Example: https://your-server.com/api/roll-stats",
-    scope: "world",      // stored server-side, same for all users
-    config: true,
-    type: String,
-    default: "",
-  });
+export class StatsCollector {
+  #moduleId;
 
-  game.settings.register(moduleId, "apiKey", {
-    name: "API Key (Bearer token)",
-    hint: "Optional. If set, sent as Authorization: Bearer <key> with every request.",
-    scope: "world",
-    config: true,
-    type: String,
-    default: "",
-  });
+  constructor(moduleId) {
+    this.#moduleId = moduleId;
+  }
 
-  game.settings.register(moduleId, "debugLogging", {
-    name: "Debug Logging",
-    hint: "Log each recorded workflow to the browser console.",
-    scope: "world",
-    config: true,
-    type: Boolean,
-    default: false,
-  });
+  snapshot() {
+    let stats = null;
+    try {
+      stats = game.settings.get("midi-qol", "RollStats");
+    } catch (e) {
+      console.warn(`${this.#moduleId} | Could not read midi-qol RollStats`);
+    }
+    if (!stats || Object.keys(stats).length === 0) {
+      stats = globalThis.MidiQOL?.gameStats?.currentStats ?? null;
+    }
+    if (!stats || Object.keys(stats).length === 0) {
+      console.warn(`${this.#moduleId} | No stats available`);
+      return null;
+    }
+
+    // Filter out user-level entries
+    const filtered = {};
+    for (const [id, data] of Object.entries(stats)) {
+      if (game.users?.get(id)) continue;
+      filtered[id] = data;
+    }
+    if (Object.keys(filtered).length === 0) {
+      console.warn(`${this.#moduleId} | No actor stats after filtering users`);
+      return null;
+    }
+
+    // Pull our dice roll tracker
+    let diceRolls = {};
+    try {
+      diceRolls = game.settings.get(this.#moduleId, "diceRolls") || {};
+    } catch {}
+    // Filter user entries from dice rolls too
+    const filteredDice = {};
+    for (const [id, data] of Object.entries(diceRolls)) {
+      if (game.users?.get(id)) continue;
+      filteredDice[id] = data;
+    }
+
+    return {
+      timestamp: new Date().toISOString(),
+      worldId: game.world.id,
+      worldName: game.world.title,
+      stats: filtered,
+      diceRolls: filteredDice,
+    };
+  }
+
+  get pendingCount() {
+    try {
+      const stats = game.settings.get("midi-qol", "RollStats");
+      let count = 0;
+      for (const [id] of Object.entries(stats ?? {})) {
+        if (!game.users?.get(id)) count++;
+      }
+      return count;
+    } catch {
+      return 0;
+    }
+  }
 }
