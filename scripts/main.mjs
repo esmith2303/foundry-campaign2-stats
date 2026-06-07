@@ -17,7 +17,9 @@ function extractAllDice(roll) {
     if (!term) return;
     if (TRACKED_FACES.includes(term.faces) && Array.isArray(term.results)) {
       for (const r of term.results) {
-        if (r && (r.active === undefined || r.active) && typeof r.result === "number") {
+        // Track ALL rolls including dropped ones (advantage/disadvantage)
+        // so raw dice luck is reflected, not just game-mechanic outcomes
+        if (r && typeof r.result === "number") {
           if (!out[term.faces]) out[term.faces] = [];
           out[term.faces].push(r.result);
         }
