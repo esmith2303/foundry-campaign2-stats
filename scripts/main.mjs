@@ -4,41 +4,56 @@ import { registerSettings } from "./settings.mjs";
 
 const MODULE_ID = "dnd-group-campaign-2-stats";
 const TRACKED_FACES = [4, 6, 8, 10, 12, 20];
+const DEBUG = true; // Set to false once working — logs every roll capture
+
+function log(...args) { if (DEBUG) console.log(`${MODULE_ID} |`, ...args); }
 
 // ── Dice extraction ──────────────────────────────────────────────────────────
 
 function extractAllDice(roll) {
-  // Returns { 4: [results...], 6: [...], 20: [...] }
   const out = {};
   if (!roll) return out;
-
   function visit(term) {
     if (!term) return;
-    // Some terms have results array of {result, active, ...}
     if (TRACKED_FACES.includes(term.faces) && Array.isArray(term.results)) {
       for (const r of term.results) {
-        // Only count active results — the kept die when rolling adv/dis
         if (r && (r.active === undefined || r.active) && typeof r.result === "number") {
           if (!out[term.faces]) out[term.faces] = [];
           out[term.faces].push(r.result);
         }
       }
     }
-    // Recurse into nested structures
     if (Array.isArray(term.terms)) for (const t of term.terms) visit(t);
     if (Array.isArray(term.rolls)) for (const r of term.rolls) if (r?.terms) for (const t of r.terms) visit(t);
     if (Array.isArray(term.operands)) for (const t of term.operands) visit(t);
   }
-
   for (const term of roll.terms || []) visit(term);
   return out;
 }
 
-// ── Storage helpers ──────────────────────────────────────────────────────────
+// Try to coerce various stored-roll shapes into a usable Roll-like object
+function asRoll(maybeRoll) {
+  if (!maybeRoll) return null;
+  // Already a Roll instance
+  if (maybeRoll.terms) return maybeRoll;
+  // Serialised JSON
+  if (typeof maybeRoll === "string") {
+    try { return Roll.fromJSON(maybeRoll); } catch {}
+  }
+  if (maybeRoll.class && maybeRoll.terms === undefined) {
+    try { return Roll.fromData(maybeRoll); } catch {}
+  }
+  // Object with terms directly
+  if (Array.isArray(maybeRoll.terms)) return maybeRoll;
+  return null;
+}
 
-async function recordDice(actorId, actorName, faceMap) {
+// ── Storage ──────────────────────────────────────────────────────────────────
+
+async function recordDice(actorId, actorName, faceMap, source = "?") {
   if (!game.user.isGM || !actorId) return;
   if (!Object.keys(faceMap).length) return;
+  log(`record dice [${source}] ${actorName}:`, faceMap);
   try {
     const rolls = game.settings.get(MODULE_ID, "diceRolls") || {};
     if (!rolls[actorId]) rolls[actorId] = { name: actorName, dice: {}, outcomes: {} };
@@ -51,13 +66,12 @@ async function recordDice(actorId, actorName, faceMap) {
       }
     }
     await game.settings.set(MODULE_ID, "diceRolls", rolls);
-  } catch (e) {
-    console.warn(`${MODULE_ID} | Failed to record dice:`, e);
-  }
+  } catch (e) { console.warn(`${MODULE_ID} | Failed to record dice:`, e); }
 }
 
-async function recordOutcome(actorId, actorName, type, success) {
+async function recordOutcome(actorId, actorName, type, success, source = "?") {
   if (!game.user.isGM || !actorId || !type || success === null || success === undefined) return;
+  log(`record outcome [${source}] ${actorName} ${type}: ${success ? "success" : "failure"}`);
   try {
     const rolls = game.settings.get(MODULE_ID, "diceRolls") || {};
     if (!rolls[actorId]) rolls[actorId] = { name: actorName, dice: {}, outcomes: {} };
@@ -66,50 +80,13 @@ async function recordOutcome(actorId, actorName, type, success) {
     if (!rolls[actorId].outcomes[type]) rolls[actorId].outcomes[type] = { success: 0, failure: 0 };
     rolls[actorId].outcomes[type][success ? "success" : "failure"] += 1;
     await game.settings.set(MODULE_ID, "diceRolls", rolls);
-  } catch (e) {
-    console.warn(`${MODULE_ID} | Failed to record outcome:`, e);
-  }
+  } catch (e) { console.warn(`${MODULE_ID} | Failed to record outcome:`, e); }
 }
 
-// ── Message inspection ──────────────────────────────────────────────────────
-
-function getActorFromMessage(message) {
-  // Try token first (more reliable for owned actors)
-  if (message.speaker?.token) {
-    const token = canvas?.tokens?.get(message.speaker.token);
-    if (token?.actor) return token.actor;
-  }
-  if (message.speaker?.actor) {
-    return game.actors?.get(message.speaker.actor);
-  }
-  return null;
-}
-
-function determineOutcome(message) {
-  const midi = message.flags?.["midi-qol"];
-  const dnd = message.flags?.dnd5e;
-
-  // midi-qol attack messages
-  if (midi) {
-    if (midi.type === "attackRoll" || midi.isAttack || midi.isHit !== undefined) {
-      if (typeof midi.isHit === "boolean") return { type: "attack", success: midi.isHit };
-    }
-    if (midi.type === "saveRoll" && typeof midi.isSuccess === "boolean") {
-      return { type: "save", success: midi.isSuccess };
-    }
-  }
-
-  // dnd5e standard messages
-  if (dnd?.roll) {
-    const r = dnd.roll;
-    if (r.type === "attack" && typeof r.success === "boolean") return { type: "attack", success: r.success };
-    if (r.type === "save" && typeof r.success === "boolean") return { type: "save", success: r.success };
-    if (r.type === "ability" && typeof r.success === "boolean") return { type: "check", success: r.success };
-    if (r.type === "skill" && typeof r.success === "boolean") return { type: "check", success: r.success };
-    if (r.type === "death" && typeof r.success === "boolean") return { type: "death", success: r.success };
-  }
-
-  return null;
+function captureFromRoll(actor, roll, source) {
+  if (!actor || !roll) return;
+  const faces = extractAllDice(roll);
+  if (Object.keys(faces).length) recordDice(actor.id, actor.name, faces, source);
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -126,36 +103,105 @@ Hooks.once("ready", () => {
   }
   game.modules.get(MODULE_ID).collector = new StatsCollector(MODULE_ID);
   game.modules.get(MODULE_ID).uploader = new StatsUploader(MODULE_ID);
-  console.log(`${MODULE_ID} | Ready`);
+  console.log(`${MODULE_ID} | Ready — debug mode ON, watch console for "record dice/outcome" lines`);
 });
 
-// ── Universal capture: every chat message with rolls ─────────────────────────
+// ── Universal capture via createChatMessage ──────────────────────────────────
 
 Hooks.on("createChatMessage", (message) => {
   if (!game.user.isGM) return;
-  if (!message.rolls?.length) return;
 
-  const actor = getActorFromMessage(message);
-  if (!actor) return;
+  // Get actor from speaker
+  let actor = null;
+  if (message.speaker?.token) {
+    const token = canvas?.tokens?.get(message.speaker.token);
+    if (token?.actor) actor = token.actor;
+  }
+  if (!actor && message.speaker?.actor) {
+    actor = game.actors?.get(message.speaker.actor);
+  }
+  if (!actor) {
+    log("chat msg with no actor — skipping", message.id);
+    return;
+  }
 
-  // Capture all dice from all rolls in the message
-  const combinedFaces = {};
-  for (const roll of message.rolls) {
-    const faces = extractAllDice(roll);
-    for (const [k, v] of Object.entries(faces)) {
-      if (!combinedFaces[k]) combinedFaces[k] = [];
-      combinedFaces[k].push(...v);
+  // Collect ALL rolls from every possible location
+  const allRolls = [];
+
+  // Standard: message.rolls
+  if (message.rolls?.length) {
+    for (const r of message.rolls) allRolls.push({ roll: r, source: "msg.rolls" });
+  }
+
+  // midi-qol flags can hold rolls
+  const midi = message.flags?.["midi-qol"];
+  if (midi) {
+    if (midi.roll) { const r = asRoll(midi.roll); if (r) allRolls.push({ roll: r, source: "midi.roll" }); }
+    if (midi.attackRoll) { const r = asRoll(midi.attackRoll); if (r) allRolls.push({ roll: r, source: "midi.attackRoll" }); }
+    if (midi.damageRoll) { const r = asRoll(midi.damageRoll); if (r) allRolls.push({ roll: r, source: "midi.damageRoll" }); }
+    if (Array.isArray(midi.damageRolls)) {
+      for (const dr of midi.damageRolls) { const r = asRoll(dr); if (r) allRolls.push({ roll: r, source: "midi.damageRolls[]" }); }
+    }
+    if (Array.isArray(midi.rolls)) {
+      for (const dr of midi.rolls) { const r = asRoll(dr); if (r) allRolls.push({ roll: r, source: "midi.rolls[]" }); }
     }
   }
-  if (Object.keys(combinedFaces).length) {
-    recordDice(actor.id, actor.name, combinedFaces);
+
+  log(`chat msg ${message.id}: actor=${actor.name}, ${allRolls.length} roll(s) found, flags:`, Object.keys(message.flags || {}));
+
+  // Capture dice from all found rolls (dedupe by combining first)
+  const combined = {};
+  for (const { roll, source } of allRolls) {
+    const faces = extractAllDice(roll);
+    for (const [k, v] of Object.entries(faces)) {
+      if (!combined[k]) combined[k] = [];
+      combined[k].push(...v);
+    }
+  }
+  if (Object.keys(combined).length) {
+    recordDice(actor.id, actor.name, combined, "chat");
+  } else if (allRolls.length) {
+    log("rolls found but no tracked dice (only modifiers?)");
   }
 
-  // Determine success/failure if applicable
-  const outcome = determineOutcome(message);
-  if (outcome) {
-    recordOutcome(actor.id, actor.name, outcome.type, outcome.success);
+  // Outcomes from midi-qol flags
+  if (midi) {
+    if (typeof midi.isHit === "boolean") recordOutcome(actor.id, actor.name, "attack", midi.isHit, "midi.isHit");
+    if (typeof midi.isSuccess === "boolean") recordOutcome(actor.id, actor.name, "save", midi.isSuccess, "midi.isSuccess");
   }
+
+  // Outcomes from dnd5e flags (saves/checks/death done outside midi-qol)
+  const dnd = message.flags?.dnd5e;
+  if (dnd?.roll) {
+    const r = dnd.roll;
+    if (r.type === "save" && typeof r.success === "boolean") recordOutcome(actor.id, actor.name, "save", r.success, "dnd5e.save");
+    else if (r.type === "ability" && typeof r.success === "boolean") recordOutcome(actor.id, actor.name, "check", r.success, "dnd5e.ability");
+    else if (r.type === "skill" && typeof r.success === "boolean") recordOutcome(actor.id, actor.name, "check", r.success, "dnd5e.skill");
+    else if (r.type === "death" && typeof r.success === "boolean") recordOutcome(actor.id, actor.name, "death", r.success, "dnd5e.death");
+  }
+});
+
+// ── midi-qol workflow hooks (belt and braces) ────────────────────────────────
+
+Hooks.on("midi-qol.AttackRollComplete", (workflow) => {
+  if (!game.user.isGM || !workflow?.actor) return;
+  log("midi-qol.AttackRollComplete fired");
+  captureFromRoll(workflow.actor, workflow.attackRoll, "midi.AttackRollComplete");
+  if (typeof workflow.isHit === "boolean") {
+    recordOutcome(workflow.actor.id, workflow.actor.name, "attack", workflow.isHit, "midi.AttackRollComplete");
+  }
+});
+
+Hooks.on("midi-qol.DamageRollComplete", (workflow) => {
+  if (!game.user.isGM || !workflow?.actor) return;
+  log("midi-qol.DamageRollComplete fired");
+  const dr = workflow.damageRolls ?? (workflow.damageRoll ? [workflow.damageRoll] : []);
+  for (const r of dr) captureFromRoll(workflow.actor, r, "midi.DamageRollComplete");
+});
+
+Hooks.on("midi-qol.RollComplete", (workflow) => {
+  if (!game.user.isGM || !workflow?.actor) return;
+  log("midi-qol.RollComplete fired");
 });
 
 // ── Toolbar button ───────────────────────────────────────────────────────────
