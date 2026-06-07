@@ -110,8 +110,16 @@ function tryRecordNonAttackOutcome(message, actor) {
   // Save/check/death outcomes from dnd5e flags
   if (!recorded && dnd?.roll) {
     const r = dnd.roll;
-    const totalRoll = message.rolls?.[0]?.total;
-    const dc = r?.dc ?? dnd.dc ?? dnd.targetDC ?? dnd.roll?.dc;
+    const roll = message.rolls?.[0];
+    const totalRoll = roll?.total;
+    // DC can be in flag locations OR on the Roll's options (dnd5e 4.x+ stores it there)
+    const dc = r?.dc
+            ?? dnd.dc
+            ?? dnd.targetDC
+            ?? dnd.roll?.dc
+            ?? roll?.options?.target
+            ?? roll?.options?.targetValue
+            ?? roll?.options?.dc;
     let success = null;
     if (typeof r.success === "boolean") success = r.success;
     else if (typeof dc === "number" && typeof totalRoll === "number") success = totalRoll >= dc;
@@ -123,6 +131,8 @@ function tryRecordNonAttackOutcome(message, actor) {
       else if (t === "ability") { recordOutcome(actor.id, actor.name, "check", success, "msg:dnd5e.ability"); recorded = true; }
       else if (t === "skill") { recordOutcome(actor.id, actor.name, "check", success, "msg:dnd5e.skill"); recorded = true; }
       else if (t === "death") { recordOutcome(actor.id, actor.name, "death", success, "msg:dnd5e.death"); recorded = true; }
+    } else {
+      log(`could not determine outcome for ${actor.name}: type=${r.type}, total=${totalRoll}, dc=${dc}, success=${r.success}`);
     }
   }
 
