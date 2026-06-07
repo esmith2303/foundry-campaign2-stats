@@ -38,7 +38,7 @@ export class StatsUploader {
   }
 
   async snapshotAndUpload(collector) {
-    const snapshot = collector.snapshot();
+    const snapshot = await collector.snapshot();
     if (!snapshot) {
       ui.notifications.warn("Midi-QOL Stats: No stats to upload.");
       return;
