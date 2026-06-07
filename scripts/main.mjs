@@ -217,10 +217,9 @@ Hooks.on("midi-qol.AttackRollComplete", (workflow) => {
 
   // Determine hit/miss right now
   const hit = determineHit(workflow);
-  if (hit !== null && workflow.uuid && !outcomeRecorded.has(workflow.uuid)) {
+  if (hit !== null && !workflow._statsOutcomeRecorded) {
     recordOutcome(workflow.actor.id, workflow.actor.name, "attack", hit, "AttackRollComplete-AC");
-    outcomeRecorded.add(workflow.uuid);
-    setTimeout(() => outcomeRecorded.delete(workflow.uuid), 5000);
+    workflow._statsOutcomeRecorded = true;
   } else if (hit === null) {
     log("could not determine hit/miss — no target AC available");
   }
@@ -233,10 +232,9 @@ Hooks.on("midi-qol.DamageRollComplete", (workflow) => {
   for (const r of dr) captureFromRoll(workflow.actor, r, "midi.DamageRollComplete");
 
   // Fallback: if attack outcome wasn't recorded yet but damage rolled, it hit
-  if (workflow.attackRoll && workflow.uuid && !outcomeRecorded.has(workflow.uuid)) {
+  if (workflow.attackRoll && !workflow._statsOutcomeRecorded) {
     recordOutcome(workflow.actor.id, workflow.actor.name, "attack", true, "DamageRollComplete-fallback");
-    outcomeRecorded.add(workflow.uuid);
-    setTimeout(() => outcomeRecorded.delete(workflow.uuid), 5000);
+    workflow._statsOutcomeRecorded = true;
   }
 });
 
