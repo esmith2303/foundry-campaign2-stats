@@ -187,9 +187,6 @@ Hooks.on("midi-qol.AttackRollComplete", (workflow) => {
   if (!game.user.isGM || !workflow?.actor) return;
   log("midi-qol.AttackRollComplete fired");
   captureFromRoll(workflow.actor, workflow.attackRoll, "midi.AttackRollComplete");
-  if (typeof workflow.isHit === "boolean") {
-    recordOutcome(workflow.actor.id, workflow.actor.name, "attack", workflow.isHit, "midi.AttackRollComplete");
-  }
 });
 
 Hooks.on("midi-qol.DamageRollComplete", (workflow) => {
@@ -199,9 +196,25 @@ Hooks.on("midi-qol.DamageRollComplete", (workflow) => {
   for (const r of dr) captureFromRoll(workflow.actor, r, "midi.DamageRollComplete");
 });
 
+// RollComplete fires at the end of the workflow when isHit/hitTargets are final
 Hooks.on("midi-qol.RollComplete", (workflow) => {
   if (!game.user.isGM || !workflow?.actor) return;
-  log("midi-qol.RollComplete fired");
+  log("midi-qol.RollComplete fired, isHit:", workflow.isHit, "hitTargets:", workflow.hitTargets?.size);
+
+  // Only record attack outcome if this was an attack workflow
+  const hadAttack = !!workflow.attackRoll;
+  if (!hadAttack) return;
+
+  // Determine hit/miss from multiple possible sources
+  let hit = null;
+  if (typeof workflow.isHit === "boolean") hit = workflow.isHit;
+  else if (workflow.hitTargets?.size !== undefined && workflow.targets?.size > 0) {
+    hit = workflow.hitTargets.size > 0;
+  }
+
+  if (hit !== null) {
+    recordOutcome(workflow.actor.id, workflow.actor.name, "attack", hit, "midi.RollComplete");
+  }
 });
 
 // ── Toolbar button ───────────────────────────────────────────────────────────
