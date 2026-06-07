@@ -14,29 +14,34 @@ function extractAllDice(roll) {
 
   function visit(term) {
     if (!term) return;
+    // Some terms have results array of {result, active, ...}
     if (TRACKED_FACES.includes(term.faces) && Array.isArray(term.results)) {
       for (const r of term.results) {
+        // Only count active results — the kept die when rolling adv/dis
         if (r && (r.active === undefined || r.active) && typeof r.result === "number") {
           if (!out[term.faces]) out[term.faces] = [];
           out[term.faces].push(r.result);
         }
       }
     }
+    // Recurse into nested structures
     if (Array.isArray(term.terms)) for (const t of term.terms) visit(t);
     if (Array.isArray(term.rolls)) for (const r of term.rolls) if (r?.terms) for (const t of r.terms) visit(t);
+    if (Array.isArray(term.operands)) for (const t of term.operands) visit(t);
   }
 
   for (const term of roll.terms || []) visit(term);
   return out;
 }
 
+// ── Storage helpers ──────────────────────────────────────────────────────────
+
 async function recordDice(actorId, actorName, faceMap) {
   if (!game.user.isGM || !actorId) return;
-  const totalFaces = Object.keys(faceMap).length;
-  if (!totalFaces) return;
+  if (!Object.keys(faceMap).length) return;
   try {
     const rolls = game.settings.get(MODULE_ID, "diceRolls") || {};
-    if (!rolls[actorId]) rolls[actorId] = { name: actorName, dice: {} };
+    if (!rolls[actorId]) rolls[actorId] = { name: actorName, dice: {}, outcomes: {} };
     rolls[actorId].name = actorName;
     if (!rolls[actorId].dice) rolls[actorId].dice = {};
     for (const [faces, results] of Object.entries(faceMap)) {
@@ -51,10 +56,60 @@ async function recordDice(actorId, actorName, faceMap) {
   }
 }
 
-function captureFromRoll(actor, roll) {
-  if (!actor || !roll) return;
-  const faces = extractAllDice(roll);
-  if (Object.keys(faces).length) recordDice(actor.id, actor.name, faces);
+async function recordOutcome(actorId, actorName, type, success) {
+  if (!game.user.isGM || !actorId || !type || success === null || success === undefined) return;
+  try {
+    const rolls = game.settings.get(MODULE_ID, "diceRolls") || {};
+    if (!rolls[actorId]) rolls[actorId] = { name: actorName, dice: {}, outcomes: {} };
+    rolls[actorId].name = actorName;
+    if (!rolls[actorId].outcomes) rolls[actorId].outcomes = {};
+    if (!rolls[actorId].outcomes[type]) rolls[actorId].outcomes[type] = { success: 0, failure: 0 };
+    rolls[actorId].outcomes[type][success ? "success" : "failure"] += 1;
+    await game.settings.set(MODULE_ID, "diceRolls", rolls);
+  } catch (e) {
+    console.warn(`${MODULE_ID} | Failed to record outcome:`, e);
+  }
+}
+
+// ── Message inspection ──────────────────────────────────────────────────────
+
+function getActorFromMessage(message) {
+  // Try token first (more reliable for owned actors)
+  if (message.speaker?.token) {
+    const token = canvas?.tokens?.get(message.speaker.token);
+    if (token?.actor) return token.actor;
+  }
+  if (message.speaker?.actor) {
+    return game.actors?.get(message.speaker.actor);
+  }
+  return null;
+}
+
+function determineOutcome(message) {
+  const midi = message.flags?.["midi-qol"];
+  const dnd = message.flags?.dnd5e;
+
+  // midi-qol attack messages
+  if (midi) {
+    if (midi.type === "attackRoll" || midi.isAttack || midi.isHit !== undefined) {
+      if (typeof midi.isHit === "boolean") return { type: "attack", success: midi.isHit };
+    }
+    if (midi.type === "saveRoll" && typeof midi.isSuccess === "boolean") {
+      return { type: "save", success: midi.isSuccess };
+    }
+  }
+
+  // dnd5e standard messages
+  if (dnd?.roll) {
+    const r = dnd.roll;
+    if (r.type === "attack" && typeof r.success === "boolean") return { type: "attack", success: r.success };
+    if (r.type === "save" && typeof r.success === "boolean") return { type: "save", success: r.success };
+    if (r.type === "ability" && typeof r.success === "boolean") return { type: "check", success: r.success };
+    if (r.type === "skill" && typeof r.success === "boolean") return { type: "check", success: r.success };
+    if (r.type === "death" && typeof r.success === "boolean") return { type: "death", success: r.success };
+  }
+
+  return null;
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -74,38 +129,33 @@ Hooks.once("ready", () => {
   console.log(`${MODULE_ID} | Ready`);
 });
 
-// ── Dice roll capture hooks ──────────────────────────────────────────────────
+// ── Universal capture: every chat message with rolls ─────────────────────────
 
-// Midi-qol full workflow — captures attack + damage dice
-Hooks.on("midi-qol.RollComplete", (workflow) => {
+Hooks.on("createChatMessage", (message) => {
   if (!game.user.isGM) return;
-  const actor = workflow?.actor;
+  if (!message.rolls?.length) return;
+
+  const actor = getActorFromMessage(message);
   if (!actor) return;
-  // Attack roll dice
-  if (workflow.attackRoll) captureFromRoll(actor, workflow.attackRoll);
-  // Damage roll(s) — newer midi-qol uses damageRolls array, older uses damageRoll
-  const damageRolls = workflow.damageRolls ?? (workflow.damageRoll ? [workflow.damageRoll] : []);
-  for (const dr of damageRolls) captureFromRoll(actor, dr);
-});
 
-// Standalone dnd5e roll hooks for saves, checks, skills, etc.
-Hooks.on("dnd5e.rollSavingThrow", (actor, roll) => captureFromRoll(actor, roll));
-Hooks.on("dnd5e.rollAbilityTest", (actor, roll) => captureFromRoll(actor, roll));
-Hooks.on("dnd5e.rollSkill", (actor, roll) => captureFromRoll(actor, roll));
-Hooks.on("dnd5e.rollDeathSave", (actor, roll) => captureFromRoll(actor, roll));
+  // Capture all dice from all rolls in the message
+  const combinedFaces = {};
+  for (const roll of message.rolls) {
+    const faces = extractAllDice(roll);
+    for (const [k, v] of Object.entries(faces)) {
+      if (!combinedFaces[k]) combinedFaces[k] = [];
+      combinedFaces[k].push(...v);
+    }
+  }
+  if (Object.keys(combinedFaces).length) {
+    recordDice(actor.id, actor.name, combinedFaces);
+  }
 
-// v4+ dnd5e hooks
-Hooks.on("dnd5e.rollAttackV2", (rolls, data) => {
-  const actor = data?.subject?.actor || data?.actor;
-  for (const r of rolls || []) captureFromRoll(actor, r);
-});
-Hooks.on("dnd5e.rollSavingThrowV2", (rolls, data) => {
-  const actor = data?.subject || data?.actor;
-  for (const r of rolls || []) captureFromRoll(actor, r);
-});
-Hooks.on("dnd5e.rollDamageV2", (rolls, data) => {
-  const actor = data?.subject?.actor || data?.actor;
-  for (const r of rolls || []) captureFromRoll(actor, r);
+  // Determine success/failure if applicable
+  const outcome = determineOutcome(message);
+  if (outcome) {
+    recordOutcome(actor.id, actor.name, outcome.type, outcome.success);
+  }
 });
 
 // ── Toolbar button ───────────────────────────────────────────────────────────
@@ -149,27 +199,16 @@ Hooks.on("renderSceneControls", () => {
       title: "Upload Midi-QOL Stats",
       content: `
         <div class="stats-uploader-dialog">
-          <p>Upload session stats for <strong>${actorCount}</strong> actor(s) and reset session counters.</p>
+          <p>Upload session stats for <strong>${actorCount}</strong> actor(s).</p>
           <p><strong>Time:</strong> ${now}</p>
           <p><strong>Endpoint:</strong> <code>${apiUrl}</code></p>
           <p><strong>Dice tracked:</strong> ${diceCount} actor(s)</p>
         </div>
       `,
       buttons: {
-        upload: {
-          icon: '<i class="fas fa-cloud-upload-alt"></i>',
-          label: "Upload & End Session",
-          callback: () => uploader.snapshotAndUpload(collector),
-        },
-        settings: {
-          icon: '<i class="fas fa-cog"></i>',
-          label: "Settings",
-          callback: () => game.settings.sheet.render(true),
-        },
-        cancel: {
-          icon: '<i class="fas fa-times"></i>',
-          label: "Cancel",
-        },
+        upload: { icon: '<i class="fas fa-cloud-upload-alt"></i>', label: "Upload & End Session", callback: () => uploader.snapshotAndUpload(collector) },
+        settings: { icon: '<i class="fas fa-cog"></i>', label: "Settings", callback: () => game.settings.sheet.render(true) },
+        cancel: { icon: '<i class="fas fa-times"></i>', label: "Cancel" },
       },
       default: actorCount > 0 ? "upload" : "settings",
     }).render(true);
