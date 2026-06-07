@@ -170,14 +170,95 @@ Hooks.on("createChatMessage", (message) => {
     if (typeof midi.isSuccess === "boolean") recordOutcome(actor.id, actor.name, "save", midi.isSuccess, "midi.isSuccess");
   }
 
-  // Outcomes from dnd5e flags (saves/checks/death done outside midi-qol)
+  // Outcomes from dnd5e flags
   const dnd = message.flags?.dnd5e;
-  if (dnd?.roll) {
+  if (dnd) {
+    log(`dnd5e flags for ${message.id}:`, JSON.stringify(dnd).slice(0, 500));
+
     const r = dnd.roll;
-    if (r.type === "save" && typeof r.success === "boolean") recordOutcome(actor.id, actor.name, "save", r.success, "dnd5e.save");
-    else if (r.type === "ability" && typeof r.success === "boolean") recordOutcome(actor.id, actor.name, "check", r.success, "dnd5e.ability");
-    else if (r.type === "skill" && typeof r.success === "boolean") recordOutcome(actor.id, actor.name, "check", r.success, "dnd5e.skill");
-    else if (r.type === "death" && typeof r.success === "boolean") recordOutcome(actor.id, actor.name, "death", r.success, "dnd5e.death");
+    const totalRoll = message.rolls?.[0]?.total;
+
+    // Try various paths to determine success
+    function findSuccess(rollType) {
+      // Direct boolean in roll
+      if (r && typeof r.success === "boolean") return r.success;
+      // Top-level success
+      if (typeof dnd.success === "boolean") return dnd.success;
+      // Calculate from DC if available
+      const dc = r?.dc ?? dnd.dc ?? dnd.targetDC ?? dnd.roll?.dc;
+      if (typeof dc === "number" && typeof totalRoll === "number") return totalRoll >= dc;
+      return null;
+    }
+
+    if (r) {
+      const t = r.type;
+      if (t === "save" || t === "savingThrow") {
+        const s = findSuccess("save");
+        if (s !== null) recordOutcome(actor.id, actor.name, "save", s, "dnd5e.save");
+      } else if (t === "ability") {
+        const s = findSuccess("check");
+        if (s !== null) recordOutcome(actor.id, actor.name, "check", s, "dnd5e.ability");
+      } else if (t === "skill") {
+        const s = findSuccess("check");
+        if (s !== null) recordOutcome(actor.id, actor.name, "check", s, "dnd5e.skill");
+      } else if (t === "death") {
+        const s = findSuccess("death");
+        if (s !== null) recordOutcome(actor.id, actor.name, "death", s, "dnd5e.death");
+      }
+    }
+  }
+});
+
+// ── updateChatMessage — catch outcomes added by midi-qol AFTER message creation ───
+
+const outcomeMessagesSeen = new Set();
+
+Hooks.on("updateChatMessage", (message, _changes, _options, _userId) => {
+  if (!game.user.isGM) return;
+  if (outcomeMessagesSeen.has(message.id)) return;
+
+  const midi = message.flags?.["midi-qol"];
+  const dnd = message.flags?.dnd5e;
+
+  // Get actor
+  let actor = null;
+  if (message.speaker?.token) {
+    const token = canvas?.tokens?.get(message.speaker.token);
+    if (token?.actor) actor = token.actor;
+  }
+  if (!actor && message.speaker?.actor) actor = game.actors?.get(message.speaker.actor);
+  if (!actor) return;
+
+  let recorded = false;
+
+  if (midi) {
+    if (typeof midi.isHit === "boolean") { recordOutcome(actor.id, actor.name, "attack", midi.isHit, "update:midi.isHit"); recorded = true; }
+    if (typeof midi.isSuccess === "boolean") { recordOutcome(actor.id, actor.name, "save", midi.isSuccess, "update:midi.isSuccess"); recorded = true; }
+  }
+
+  if (!recorded && dnd?.roll) {
+    const r = dnd.roll;
+    const totalRoll = message.rolls?.[0]?.total;
+    const dc = r?.dc ?? dnd.dc ?? dnd.targetDC;
+    let success = null;
+    if (typeof r.success === "boolean") success = r.success;
+    else if (typeof dc === "number" && typeof totalRoll === "number") success = totalRoll >= dc;
+
+    if (success !== null) {
+      const t = r.type;
+      if (t === "save" || t === "savingThrow") { recordOutcome(actor.id, actor.name, "save", success, "update:dnd5e.save"); recorded = true; }
+      else if (t === "ability") { recordOutcome(actor.id, actor.name, "check", success, "update:dnd5e.ability"); recorded = true; }
+      else if (t === "skill") { recordOutcome(actor.id, actor.name, "check", success, "update:dnd5e.skill"); recorded = true; }
+      else if (t === "death") { recordOutcome(actor.id, actor.name, "death", success, "update:dnd5e.death"); recorded = true; }
+    }
+  }
+
+  if (recorded) outcomeMessagesSeen.add(message.id);
+  // Cap set size
+  if (outcomeMessagesSeen.size > 500) {
+    const arr = [...outcomeMessagesSeen];
+    outcomeMessagesSeen.clear();
+    arr.slice(-250).forEach(id => outcomeMessagesSeen.add(id));
   }
 });
 
@@ -207,8 +288,6 @@ function determineHit(workflow) {
   }
   return null;
 }
-
-const outcomeRecorded = new Set();
 
 Hooks.on("midi-qol.AttackRollComplete", (workflow) => {
   if (!game.user.isGM || !workflow?.actor) return;
