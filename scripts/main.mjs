@@ -183,10 +183,16 @@ Hooks.on("createChatMessage", (message) => {
 
 // ── midi-qol workflow hooks (belt and braces) ────────────────────────────────
 
+// Track which workflows we've recorded an outcome for, so we don't double-record
+const attackedWorkflows = new Set();
+const outcomeRecorded = new Set();
+
 Hooks.on("midi-qol.AttackRollComplete", (workflow) => {
   if (!game.user.isGM || !workflow?.actor) return;
   log("midi-qol.AttackRollComplete fired");
   captureFromRoll(workflow.actor, workflow.attackRoll, "midi.AttackRollComplete");
+  // Mark this workflow as having had an attack
+  if (workflow.uuid) attackedWorkflows.add(workflow.uuid);
 });
 
 Hooks.on("midi-qol.DamageRollComplete", (workflow) => {
@@ -194,26 +200,42 @@ Hooks.on("midi-qol.DamageRollComplete", (workflow) => {
   log("midi-qol.DamageRollComplete fired");
   const dr = workflow.damageRolls ?? (workflow.damageRoll ? [workflow.damageRoll] : []);
   for (const r of dr) captureFromRoll(workflow.actor, r, "midi.DamageRollComplete");
+
+  // Damage rolled means the attack hit (if there was an attack roll)
+  if (workflow.attackRoll && workflow.uuid && !outcomeRecorded.has(workflow.uuid)) {
+    recordOutcome(workflow.actor.id, workflow.actor.name, "attack", true, "midi.DamageRollComplete=hit");
+    outcomeRecorded.add(workflow.uuid);
+  }
 });
 
-// RollComplete fires at the end of the workflow when isHit/hitTargets are final
+// RollComplete fires at end of workflow — if attack happened but no outcome recorded, it was a miss
 Hooks.on("midi-qol.RollComplete", (workflow) => {
   if (!game.user.isGM || !workflow?.actor) return;
-  log("midi-qol.RollComplete fired, isHit:", workflow.isHit, "hitTargets:", workflow.hitTargets?.size);
 
-  // Only record attack outcome if this was an attack workflow
-  const hadAttack = !!workflow.attackRoll;
-  if (!hadAttack) return;
+  // Debug: inspect available hit-related properties
+  log("midi-qol.RollComplete fired — workflow props:",
+    "isHit:", workflow.isHit,
+    "hitTargets:", workflow.hitTargets?.size,
+    "applicationTargets:", workflow.applicationTargets?.size,
+    "targets:", workflow.targets?.size,
+    "hadDamage:", !!(workflow.damageRolls?.length || workflow.damageRoll),
+    "attackTotal:", workflow.attackTotal,
+  );
 
-  // Determine hit/miss from multiple possible sources
-  let hit = null;
-  if (typeof workflow.isHit === "boolean") hit = workflow.isHit;
-  else if (workflow.hitTargets?.size !== undefined && workflow.targets?.size > 0) {
-    hit = workflow.hitTargets.size > 0;
+  // If we had an attack roll but no outcome was recorded yet (no damage = miss)
+  if (workflow.attackRoll && workflow.uuid && !outcomeRecorded.has(workflow.uuid)) {
+    const hadDamage = !!(workflow.damageRolls?.length || workflow.damageRoll);
+    if (!hadDamage) {
+      recordOutcome(workflow.actor.id, workflow.actor.name, "attack", false, "midi.RollComplete=miss");
+      outcomeRecorded.add(workflow.uuid);
+    }
   }
 
-  if (hit !== null) {
-    recordOutcome(workflow.actor.id, workflow.actor.name, "attack", hit, "midi.RollComplete");
+  // Cleanup
+  if (workflow.uuid) {
+    attackedWorkflows.delete(workflow.uuid);
+    // Don't immediately delete outcomeRecorded — keep for a bit to handle re-fires
+    setTimeout(() => outcomeRecorded.delete(workflow.uuid), 5000);
   }
 });
 
