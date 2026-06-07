@@ -4,7 +4,7 @@ import { registerSettings } from "./settings.mjs";
 
 const MODULE_ID = "dnd-group-campaign-2-stats";
 const TRACKED_FACES = [4, 6, 8, 10, 12, 20];
-const DEBUG = true; // Set to false once working — logs every roll capture
+const DEBUG = true;
 
 function log(...args) { if (DEBUG) console.log(`${MODULE_ID} |`, ...args); }
 
@@ -31,19 +31,11 @@ function extractAllDice(roll) {
   return out;
 }
 
-// Try to coerce various stored-roll shapes into a usable Roll-like object
 function asRoll(maybeRoll) {
   if (!maybeRoll) return null;
-  // Already a Roll instance
   if (maybeRoll.terms) return maybeRoll;
-  // Serialised JSON
-  if (typeof maybeRoll === "string") {
-    try { return Roll.fromJSON(maybeRoll); } catch {}
-  }
-  if (maybeRoll.class && maybeRoll.terms === undefined) {
-    try { return Roll.fromData(maybeRoll); } catch {}
-  }
-  // Object with terms directly
+  if (typeof maybeRoll === "string") { try { return Roll.fromJSON(maybeRoll); } catch {} }
+  if (maybeRoll.class && maybeRoll.terms === undefined) { try { return Roll.fromData(maybeRoll); } catch {} }
   if (Array.isArray(maybeRoll.terms)) return maybeRoll;
   return null;
 }
@@ -89,6 +81,61 @@ function captureFromRoll(actor, roll, source) {
   if (Object.keys(faces).length) recordDice(actor.id, actor.name, faces, source);
 }
 
+function getActorFromMessage(message) {
+  if (message.speaker?.token) {
+    const token = canvas?.tokens?.get(message.speaker.token);
+    if (token?.actor) return token.actor;
+  }
+  if (message.speaker?.actor) return game.actors?.get(message.speaker.actor);
+  return null;
+}
+
+// Tracks message IDs we've already recorded a non-attack outcome for
+// (attack outcomes are handled exclusively by midi-qol.AttackRollComplete)
+const outcomeRecordedForMessage = new Set();
+
+function tryRecordNonAttackOutcome(message, actor) {
+  if (outcomeRecordedForMessage.has(message.id)) return;
+
+  const midi = message.flags?.["midi-qol"];
+  const dnd = message.flags?.dnd5e;
+  let recorded = false;
+
+  // Save outcomes from midi-qol (NOT attack — that's the workflow hook's job)
+  if (midi && typeof midi.isSuccess === "boolean") {
+    recordOutcome(actor.id, actor.name, "save", midi.isSuccess, "msg:midi.isSuccess");
+    recorded = true;
+  }
+
+  // Save/check/death outcomes from dnd5e flags
+  if (!recorded && dnd?.roll) {
+    const r = dnd.roll;
+    const totalRoll = message.rolls?.[0]?.total;
+    const dc = r?.dc ?? dnd.dc ?? dnd.targetDC ?? dnd.roll?.dc;
+    let success = null;
+    if (typeof r.success === "boolean") success = r.success;
+    else if (typeof dc === "number" && typeof totalRoll === "number") success = totalRoll >= dc;
+
+    if (success !== null) {
+      const t = r.type;
+      // Skip attack — that's handled by AttackRollComplete
+      if (t === "save" || t === "savingThrow") { recordOutcome(actor.id, actor.name, "save", success, "msg:dnd5e.save"); recorded = true; }
+      else if (t === "ability") { recordOutcome(actor.id, actor.name, "check", success, "msg:dnd5e.ability"); recorded = true; }
+      else if (t === "skill") { recordOutcome(actor.id, actor.name, "check", success, "msg:dnd5e.skill"); recorded = true; }
+      else if (t === "death") { recordOutcome(actor.id, actor.name, "death", success, "msg:dnd5e.death"); recorded = true; }
+    }
+  }
+
+  if (recorded) outcomeRecordedForMessage.add(message.id);
+
+  // Cap set size
+  if (outcomeRecordedForMessage.size > 500) {
+    const arr = [...outcomeRecordedForMessage];
+    outcomeRecordedForMessage.clear();
+    arr.slice(-250).forEach(id => outcomeRecordedForMessage.add(id));
+  }
+}
+
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
 Hooks.once("init", () => {
@@ -103,170 +150,56 @@ Hooks.once("ready", () => {
   }
   game.modules.get(MODULE_ID).collector = new StatsCollector(MODULE_ID);
   game.modules.get(MODULE_ID).uploader = new StatsUploader(MODULE_ID);
-  console.log(`${MODULE_ID} | Ready — debug mode ON, watch console for "record dice/outcome" lines`);
+  console.log(`${MODULE_ID} | Ready — debug mode ON`);
 });
 
-// ── Universal capture via createChatMessage ──────────────────────────────────
+// ── createChatMessage: dice capture + non-attack outcomes ────────────────────
 
 Hooks.on("createChatMessage", (message) => {
   if (!game.user.isGM) return;
 
-  // Get actor from speaker
-  let actor = null;
-  if (message.speaker?.token) {
-    const token = canvas?.tokens?.get(message.speaker.token);
-    if (token?.actor) actor = token.actor;
-  }
-  if (!actor && message.speaker?.actor) {
-    actor = game.actors?.get(message.speaker.actor);
-  }
-  if (!actor) {
-    log("chat msg with no actor — skipping", message.id);
-    return;
-  }
+  const actor = getActorFromMessage(message);
+  if (!actor) return;
 
-  // Collect ALL rolls from every possible location
+  // Collect rolls from message.rolls + midi-qol flag locations
   const allRolls = [];
-
-  // Standard: message.rolls
-  if (message.rolls?.length) {
-    for (const r of message.rolls) allRolls.push({ roll: r, source: "msg.rolls" });
-  }
-
-  // midi-qol flags can hold rolls
+  if (message.rolls?.length) for (const r of message.rolls) allRolls.push(r);
   const midi = message.flags?.["midi-qol"];
   if (midi) {
-    if (midi.roll) { const r = asRoll(midi.roll); if (r) allRolls.push({ roll: r, source: "midi.roll" }); }
-    if (midi.attackRoll) { const r = asRoll(midi.attackRoll); if (r) allRolls.push({ roll: r, source: "midi.attackRoll" }); }
-    if (midi.damageRoll) { const r = asRoll(midi.damageRoll); if (r) allRolls.push({ roll: r, source: "midi.damageRoll" }); }
-    if (Array.isArray(midi.damageRolls)) {
-      for (const dr of midi.damageRolls) { const r = asRoll(dr); if (r) allRolls.push({ roll: r, source: "midi.damageRolls[]" }); }
-    }
-    if (Array.isArray(midi.rolls)) {
-      for (const dr of midi.rolls) { const r = asRoll(dr); if (r) allRolls.push({ roll: r, source: "midi.rolls[]" }); }
-    }
+    [midi.roll, midi.attackRoll, midi.damageRoll, ...(midi.damageRolls || []), ...(midi.rolls || [])]
+      .filter(Boolean).forEach(x => { const r = asRoll(x); if (r) allRolls.push(r); });
   }
 
-  log(`chat msg ${message.id}: actor=${actor.name}, ${allRolls.length} roll(s) found, flags:`, Object.keys(message.flags || {}));
-
-  // Capture dice from all found rolls (dedupe by combining first)
+  // Combine dice from all rolls
   const combined = {};
-  for (const { roll, source } of allRolls) {
+  for (const roll of allRolls) {
     const faces = extractAllDice(roll);
     for (const [k, v] of Object.entries(faces)) {
       if (!combined[k]) combined[k] = [];
       combined[k].push(...v);
     }
   }
-  if (Object.keys(combined).length) {
-    recordDice(actor.id, actor.name, combined, "chat");
-  } else if (allRolls.length) {
-    log("rolls found but no tracked dice (only modifiers?)");
-  }
+  if (Object.keys(combined).length) recordDice(actor.id, actor.name, combined, "chat");
 
-  // Outcomes from midi-qol flags
-  if (midi) {
-    if (typeof midi.isHit === "boolean") recordOutcome(actor.id, actor.name, "attack", midi.isHit, "midi.isHit");
-    if (typeof midi.isSuccess === "boolean") recordOutcome(actor.id, actor.name, "save", midi.isSuccess, "midi.isSuccess");
-  }
+  log(`chat msg ${message.id}: actor=${actor.name}, flags:`, Object.keys(message.flags || {}));
+  if (message.flags?.dnd5e) log(`  dnd5e:`, JSON.stringify(message.flags.dnd5e).slice(0, 300));
 
-  // Outcomes from dnd5e flags
-  const dnd = message.flags?.dnd5e;
-  if (dnd) {
-    log(`dnd5e flags for ${message.id}:`, JSON.stringify(dnd).slice(0, 500));
-
-    const r = dnd.roll;
-    const totalRoll = message.rolls?.[0]?.total;
-
-    // Try various paths to determine success
-    function findSuccess(rollType) {
-      // Direct boolean in roll
-      if (r && typeof r.success === "boolean") return r.success;
-      // Top-level success
-      if (typeof dnd.success === "boolean") return dnd.success;
-      // Calculate from DC if available
-      const dc = r?.dc ?? dnd.dc ?? dnd.targetDC ?? dnd.roll?.dc;
-      if (typeof dc === "number" && typeof totalRoll === "number") return totalRoll >= dc;
-      return null;
-    }
-
-    if (r) {
-      const t = r.type;
-      if (t === "save" || t === "savingThrow") {
-        const s = findSuccess("save");
-        if (s !== null) recordOutcome(actor.id, actor.name, "save", s, "dnd5e.save");
-      } else if (t === "ability") {
-        const s = findSuccess("check");
-        if (s !== null) recordOutcome(actor.id, actor.name, "check", s, "dnd5e.ability");
-      } else if (t === "skill") {
-        const s = findSuccess("check");
-        if (s !== null) recordOutcome(actor.id, actor.name, "check", s, "dnd5e.skill");
-      } else if (t === "death") {
-        const s = findSuccess("death");
-        if (s !== null) recordOutcome(actor.id, actor.name, "death", s, "dnd5e.death");
-      }
-    }
-  }
+  // Record non-attack outcomes (saves, checks, death)
+  tryRecordNonAttackOutcome(message, actor);
 });
 
-// ── updateChatMessage — catch outcomes added by midi-qol AFTER message creation ───
+// ── updateChatMessage: catch outcomes added by midi-qol AFTER creation ───────
 
-const outcomeMessagesSeen = new Set();
-
-Hooks.on("updateChatMessage", (message, _changes, _options, _userId) => {
+Hooks.on("updateChatMessage", (message) => {
   if (!game.user.isGM) return;
-  if (outcomeMessagesSeen.has(message.id)) return;
-
-  const midi = message.flags?.["midi-qol"];
-  const dnd = message.flags?.dnd5e;
-
-  // Get actor
-  let actor = null;
-  if (message.speaker?.token) {
-    const token = canvas?.tokens?.get(message.speaker.token);
-    if (token?.actor) actor = token.actor;
-  }
-  if (!actor && message.speaker?.actor) actor = game.actors?.get(message.speaker.actor);
+  const actor = getActorFromMessage(message);
   if (!actor) return;
-
-  let recorded = false;
-
-  if (midi) {
-    if (typeof midi.isHit === "boolean") { recordOutcome(actor.id, actor.name, "attack", midi.isHit, "update:midi.isHit"); recorded = true; }
-    if (typeof midi.isSuccess === "boolean") { recordOutcome(actor.id, actor.name, "save", midi.isSuccess, "update:midi.isSuccess"); recorded = true; }
-  }
-
-  if (!recorded && dnd?.roll) {
-    const r = dnd.roll;
-    const totalRoll = message.rolls?.[0]?.total;
-    const dc = r?.dc ?? dnd.dc ?? dnd.targetDC;
-    let success = null;
-    if (typeof r.success === "boolean") success = r.success;
-    else if (typeof dc === "number" && typeof totalRoll === "number") success = totalRoll >= dc;
-
-    if (success !== null) {
-      const t = r.type;
-      if (t === "save" || t === "savingThrow") { recordOutcome(actor.id, actor.name, "save", success, "update:dnd5e.save"); recorded = true; }
-      else if (t === "ability") { recordOutcome(actor.id, actor.name, "check", success, "update:dnd5e.ability"); recorded = true; }
-      else if (t === "skill") { recordOutcome(actor.id, actor.name, "check", success, "update:dnd5e.skill"); recorded = true; }
-      else if (t === "death") { recordOutcome(actor.id, actor.name, "death", success, "update:dnd5e.death"); recorded = true; }
-    }
-  }
-
-  if (recorded) outcomeMessagesSeen.add(message.id);
-  // Cap set size
-  if (outcomeMessagesSeen.size > 500) {
-    const arr = [...outcomeMessagesSeen];
-    outcomeMessagesSeen.clear();
-    arr.slice(-250).forEach(id => outcomeMessagesSeen.add(id));
-  }
+  tryRecordNonAttackOutcome(message, actor);
 });
 
-// ── midi-qol workflow hooks (belt and braces) ────────────────────────────────
+// ── midi-qol workflow hooks: attack outcomes + dice capture ──────────────────
 
-// Determine hit/miss by checking nat 20/1 + comparing attack total to target AC
 function determineHit(workflow) {
-  // Find the d20 result (active one, accounting for advantage/disadvantage)
   let d20 = null;
   for (const term of workflow.attackRoll?.terms || []) {
     if (term.faces === 20 && term.results?.length) {
@@ -274,11 +207,9 @@ function determineHit(workflow) {
       if (active) { d20 = active.result; break; }
     }
   }
-  // Nat 20 always hits, nat 1 always misses
   if (d20 === 20) return true;
   if (d20 === 1) return false;
 
-  // Compare attack total to target AC
   if (workflow.targets?.size > 0 && typeof workflow.attackTotal === "number") {
     const target = [...workflow.targets][0];
     const ac = target?.actor?.system?.attributes?.ac?.value
@@ -294,7 +225,6 @@ Hooks.on("midi-qol.AttackRollComplete", (workflow) => {
   log("midi-qol.AttackRollComplete fired, attackTotal:", workflow.attackTotal, "targets:", workflow.targets?.size);
   captureFromRoll(workflow.actor, workflow.attackRoll, "midi.AttackRollComplete");
 
-  // Determine hit/miss right now
   const hit = determineHit(workflow);
   if (hit !== null && !workflow._statsOutcomeRecorded) {
     recordOutcome(workflow.actor.id, workflow.actor.name, "attack", hit, "AttackRollComplete-AC");
@@ -302,6 +232,10 @@ Hooks.on("midi-qol.AttackRollComplete", (workflow) => {
   } else if (hit === null) {
     log("could not determine hit/miss — no target AC available");
   }
+
+  // Also mark the attack chat message as "outcome handled" to prevent double-counting
+  if (workflow.itemCardId) outcomeRecordedForMessage.add(workflow.itemCardId);
+  if (workflow.chatCardId) outcomeRecordedForMessage.add(workflow.chatCardId);
 });
 
 Hooks.on("midi-qol.DamageRollComplete", (workflow) => {
@@ -310,7 +244,6 @@ Hooks.on("midi-qol.DamageRollComplete", (workflow) => {
   const dr = workflow.damageRolls ?? (workflow.damageRoll ? [workflow.damageRoll] : []);
   for (const r of dr) captureFromRoll(workflow.actor, r, "midi.DamageRollComplete");
 
-  // Fallback: if attack outcome wasn't recorded yet but damage rolled, it hit
   if (workflow.attackRoll && !workflow._statsOutcomeRecorded) {
     recordOutcome(workflow.actor.id, workflow.actor.name, "attack", true, "DamageRollComplete-fallback");
     workflow._statsOutcomeRecorded = true;

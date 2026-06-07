@@ -1,6 +1,7 @@
 /**
  * StatsCollector
- * Reads midi-qol's live stats + our dice tracker.
+ * Reads midi-qol's live stats + our dice/outcomes tracker.
+ * Returns a snapshot if EITHER source has data.
  */
 export class StatsCollector {
   #moduleId;
@@ -24,20 +25,13 @@ export class StatsCollector {
     if (!stats || Object.keys(stats).length === 0) {
       try { stats = game.settings.get("midi-qol", "RollStats"); } catch {}
     }
-    if (!stats || Object.keys(stats).length === 0) {
-      console.warn(`${this.#moduleId} | No stats available`);
-      return null;
-    }
+    stats = stats || {};
 
     // Filter out user-level entries
-    const filtered = {};
+    const filteredStats = {};
     for (const [id, data] of Object.entries(stats)) {
       if (game.users?.get(id)) continue;
-      filtered[id] = data;
-    }
-    if (Object.keys(filtered).length === 0) {
-      console.warn(`${this.#moduleId} | No actor stats after filtering users`);
-      return null;
+      filteredStats[id] = data;
     }
 
     // Our dice + outcomes tracker
@@ -49,21 +43,38 @@ export class StatsCollector {
       filteredDice[id] = data;
     }
 
+    const hasStats = Object.keys(filteredStats).length > 0;
+    const hasDice = Object.keys(filteredDice).length > 0;
+
+    if (!hasStats && !hasDice) {
+      console.warn(`${this.#moduleId} | No stats or dice data to upload`);
+      return null;
+    }
+
     return {
       timestamp: new Date().toISOString(),
       worldId: game.world.id,
       worldName: game.world.title,
-      stats: filtered,
+      stats: filteredStats,
       diceRolls: filteredDice,
     };
   }
 
+  // Count of actors with ANY tracked data (midi-qol stats OR dice OR outcomes)
   get pendingCount() {
+    const actorIds = new Set();
+
     const stats = globalThis.MidiQOL?.gameStats?.currentStats ?? {};
-    let count = 0;
     for (const [id] of Object.entries(stats)) {
-      if (!game.users?.get(id)) count++;
+      if (!game.users?.get(id)) actorIds.add(id);
     }
-    return count;
+
+    let diceRolls = {};
+    try { diceRolls = game.settings.get(this.#moduleId, "diceRolls") || {}; } catch {}
+    for (const [id] of Object.entries(diceRolls)) {
+      if (!game.users?.get(id)) actorIds.add(id);
+    }
+
+    return actorIds.size;
   }
 }
