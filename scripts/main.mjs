@@ -523,6 +523,7 @@ function showSkillsSheet(anchorBtn) {
         box-shadow:0 10px 40px rgba(0,0,0,.6), 0 0 30px rgba(201,168,76,.08);
         font-family:var(--font-body);
         color:var(--text);
+        width:max-content;
         max-width:95vw;
         max-height:90vh;
         display:flex; flex-direction:column;
