@@ -253,13 +253,18 @@ Hooks.on("createChatMessage", (message) => {
   const actor = getActorFromMessage(message);
   if (!actor) return;
 
-  // Collect rolls from message.rolls + midi-qol flag locations
+  // Collect rolls from message.rolls + midi-qol flag locations (prod stores them in flags)
   const allRolls = [];
   if (message.rolls?.length) for (const r of message.rolls) allRolls.push(r);
   const midi = message.flags?.["midi-qol"];
   if (midi) {
-    [midi.roll, midi.attackRoll, midi.damageRoll, ...(midi.damageRolls || []), ...(midi.rolls || [])]
-      .filter(Boolean).forEach(x => { const r = asRoll(x); if (r) allRolls.push(r); });
+    if (midi.attackRoll)    { const r = asRoll(midi.attackRoll);    if (r) allRolls.push(r); }
+    if (midi.d20AttackRoll) { const r = asRoll(midi.d20AttackRoll); if (r) allRolls.push(r); }
+    if (midi.roll)          { const r = asRoll(midi.roll);          if (r) allRolls.push(r); }
+    if (midi.damageRoll)    { const r = asRoll(midi.damageRoll);    if (r) allRolls.push(r); }
+    for (const x of (midi.damageRolls      || [])) { const r = asRoll(x); if (r) allRolls.push(r); }
+    for (const x of (midi.otherDamageRolls || [])) { const r = asRoll(x); if (r) allRolls.push(r); }
+    for (const x of (midi.rolls            || [])) { const r = asRoll(x); if (r) allRolls.push(r); }
   }
 
   // Combine dice from all rolls
