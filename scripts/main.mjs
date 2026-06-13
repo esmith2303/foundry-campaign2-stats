@@ -393,6 +393,13 @@ Hooks.on("getSceneControlButtons", (controls) => {
     button: true,
     onChange: () => {},
   };
+  tokenControls.tools["midi-qol-skills"] = {
+    name: "midi-qol-skills",
+    title: "Character Skill Sheet",
+    icon: "fas fa-scroll",
+    button: true,
+    onChange: () => {},
+  };
 });
 
 Hooks.on("renderSceneControls", () => {
@@ -435,4 +442,98 @@ Hooks.on("renderSceneControls", () => {
       default: actorCount > 0 ? "upload" : "settings",
     }).render(true);
   });
+
+  // ── Skills sheet button ────────────────────────────────────────────────
+  const skillsBtn = document.querySelector('[data-tool="midi-qol-skills"]');
+  if (skillsBtn) {
+    const newSkillsBtn = skillsBtn.cloneNode(true);
+    skillsBtn.parentNode.replaceChild(newSkillsBtn, skillsBtn);
+    newSkillsBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showSkillsSheet();
+    });
+  }
 });
+
+function showSkillsSheet() {
+  const characters = game.actors.contents
+    .filter(a => a.hasPlayerOwner && (a.type === "character" || a.type === "npc"))
+    .filter(a => a.hasPlayerOwner)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!characters.length) {
+    ui.notifications.warn("No player-owned characters found.");
+    return;
+  }
+
+  const skillConfig = CONFIG.DND5E?.skills || {};
+  const skillKeys = Object.keys(skillConfig).sort((a, b) =>
+    (skillConfig[a].label || a).localeCompare(skillConfig[b].label || b)
+  );
+
+  if (!skillKeys.length) {
+    ui.notifications.warn("No skills configured in dnd5e.");
+    return;
+  }
+
+  // Build the table
+  const rows = [];
+  rows.push(`<tr><th class="skill-col">Skill</th>${characters.map(c => `<th>${c.name.split(" ")[0]}</th>`).join("")}</tr>`);
+
+  for (const skillKey of skillKeys) {
+    const info = skillConfig[skillKey];
+    const label = info.label || skillKey;
+    const ability = (info.ability || "").toUpperCase();
+    const cells = [`<td class="skill-name">${label}<span class="ability">${ability}</span></td>`];
+
+    for (const char of characters) {
+      const skill = char.system?.skills?.[skillKey];
+      if (!skill) { cells.push(`<td class="skill-value">—</td>`); continue; }
+      const total = skill.total ?? 0;
+      const sign = total >= 0 ? "+" : "";
+      const prof = skill.value ?? (skill.proficient ? 1 : 0);
+      let marker = "";
+      if (prof >= 2)   marker = `<span class="prof expert" title="Expertise">★★</span>`;
+      else if (prof >= 1) marker = `<span class="prof" title="Proficient">★</span>`;
+      else if (prof >= 0.5) marker = `<span class="prof half" title="Half">☆</span>`;
+      cells.push(`<td class="skill-value">${sign}${total}${marker ? " " + marker : ""}</td>`);
+    }
+    rows.push(`<tr>${cells.join("")}</tr>`);
+  }
+
+  const html = `
+    <style>
+      .midi-skills-sheet { font-family: 'Signika', sans-serif; }
+      .midi-skills-sheet .skills-wrap { max-height: 70vh; overflow: auto; }
+      .midi-skills-sheet table { border-collapse: collapse; width: 100%; font-size: 13px; }
+      .midi-skills-sheet th, .midi-skills-sheet td { padding: 5px 10px; border: 1px solid rgba(201,168,76,.2); text-align: center; }
+      .midi-skills-sheet th { background: #1a1a28; color: #c9a84c; position: sticky; top: 0; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; font-size: 11px; }
+      .midi-skills-sheet th.skill-col { text-align: left; }
+      .midi-skills-sheet td.skill-name { text-align: left; white-space: nowrap; color: #d4d0c8; }
+      .midi-skills-sheet td.skill-name .ability { color: #888; font-size: 10px; margin-left: .4rem; font-family: 'Courier New', monospace; }
+      .midi-skills-sheet td.skill-value { font-family: 'Courier New', monospace; font-weight: 600; color: #e8e4d8; }
+      .midi-skills-sheet tbody tr:nth-child(even) td { background: rgba(255,255,255,.025); }
+      .midi-skills-sheet .prof { color: #c9a84c; margin-left: 2px; }
+      .midi-skills-sheet .prof.expert { color: #ffd454; }
+      .midi-skills-sheet .prof.half { color: #999; }
+      .midi-skills-sheet .legend { margin-top: .6rem; color: #888; font-size: 11px; text-align: center; }
+    </style>
+    <div class="midi-skills-sheet">
+      <div class="skills-wrap"><table>${rows.join("")}</table></div>
+      <div class="legend">★ Proficient &nbsp; ★★ Expertise &nbsp; ☆ Half-Proficient</div>
+    </div>
+  `;
+
+  new Dialog({
+    title: "Character Skill Sheet",
+    content: html,
+    buttons: {
+      close: { icon: '<i class="fas fa-times"></i>', label: "Close" },
+    },
+    default: "close",
+  }, {
+    width: Math.min(900, 220 + characters.length * 100),
+    height: "auto",
+    resizable: true,
+  }).render(true);
+}
