@@ -489,7 +489,7 @@ function showSkillsSheet(anchorBtn) {
     const ability = (info.ability || "").toUpperCase();
     const cells = characters.map(char => {
       const skill = char.system?.skills?.[skillKey];
-      if (!skill) return `<td class="skill-value muted"><span class="num">—</span><span class="stars"></span></td>`;
+      if (!skill) return `<td class="skill-value muted"><div class="cell-inner"><span class="num">—</span><span class="stars"></span></div></td>`;
       const total = skill.total ?? 0;
       const sign = total >= 0 ? "+" : "";
       const prof = skill.value ?? (skill.proficient ? 1 : 0);
@@ -497,7 +497,7 @@ function showSkillsSheet(anchorBtn) {
       if (prof >= 2)        marker = `<span class="prof expert" title="Expertise">★★</span>`;
       else if (prof >= 1)   marker = `<span class="prof" title="Proficient">★</span>`;
       else if (prof >= 0.5) marker = `<span class="prof half" title="Half">☆</span>`;
-      return `<td class="skill-value${prof >= 1 ? " proficient" : ""}"><span class="num">${sign}${total}</span><span class="stars">${marker}</span></td>`;
+      return `<td class="skill-value${prof >= 1 ? " proficient" : ""}"><div class="cell-inner"><span class="num">${sign}${total}</span><span class="stars">${marker}</span></div></td>`;
     }).join("");
     return `<tr><td class="skill-name">${label}<span class="ability">${ability}</span></td>${cells}</tr>`;
   }).join("");
@@ -577,6 +577,8 @@ function showSkillsSheet(anchorBtn) {
       #midi-skills-popover td.skill-value {
         font-family:var(--font-mono); font-weight:600;
         color:var(--text);
+      }
+      #midi-skills-popover td.skill-value .cell-inner {
         display:grid;
         grid-template-columns:1.4rem 1fr 1.4rem;
         align-items:center;
