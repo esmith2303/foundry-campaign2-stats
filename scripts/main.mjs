@@ -450,14 +450,15 @@ Hooks.on("renderSceneControls", () => {
     skillsBtn.parentNode.replaceChild(newSkillsBtn, skillsBtn);
     newSkillsBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      showSkillsSheet();
+      showSkillsSheet(newSkillsBtn);
     });
   }
 });
 
-function showSkillsSheet() {
-  // Remove existing overlay if open
-  document.getElementById("midi-skills-overlay")?.remove();
+function showSkillsSheet(anchorBtn) {
+  // Toggle: if already open, close it
+  const existing = document.getElementById("midi-skills-popover");
+  if (existing) { existing._close?.(); return; }
 
   const characters = game.actors.contents
     .filter(a => a.hasPlayerOwner && (a.type === "character" || a.type === "npc"))
@@ -488,7 +489,7 @@ function showSkillsSheet() {
     const ability = (info.ability || "").toUpperCase();
     const cells = characters.map(char => {
       const skill = char.system?.skills?.[skillKey];
-      if (!skill) return `<td class="skill-value muted">—</td>`;
+      if (!skill) return `<td class="skill-value muted"><span class="num">—</span><span class="stars"></span></td>`;
       const total = skill.total ?? 0;
       const sign = total >= 0 ? "+" : "";
       const prof = skill.value ?? (skill.proficient ? 1 : 0);
@@ -496,146 +497,168 @@ function showSkillsSheet() {
       if (prof >= 2)        marker = `<span class="prof expert" title="Expertise">★★</span>`;
       else if (prof >= 1)   marker = `<span class="prof" title="Proficient">★</span>`;
       else if (prof >= 0.5) marker = `<span class="prof half" title="Half">☆</span>`;
-      return `<td class="skill-value${prof >= 1 ? " proficient" : ""}">${sign}${total}${marker ? " " + marker : ""}</td>`;
+      return `<td class="skill-value${prof >= 1 ? " proficient" : ""}"><span class="num">${sign}${total}</span><span class="stars">${marker}</span></td>`;
     }).join("");
     return `<tr><td class="skill-name">${label}<span class="ability">${ability}</span></td>${cells}</tr>`;
   }).join("");
 
-  const overlay = document.createElement("div");
-  overlay.id = "midi-skills-overlay";
-  overlay.innerHTML = `
+  const popover = document.createElement("div");
+  popover.id = "midi-skills-popover";
+  popover.innerHTML = `
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Crimson+Text:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
-      #midi-skills-overlay {
+      #midi-skills-popover {
         --bg:#0a0a0f;--bg2:#12121a;--bg3:#1a1a28;--bg4:#22223a;
         --gold:#c9a84c;--gold-dim:#8a6d2b;--gold-bright:#e8c65a;
         --text:#d4d0c8;--text-dim:#7a7770;--text-bright:#f0ece4;
         --border:#2a2a3a;
         --font-display:'Cinzel',serif;--font-body:'Crimson Text',serif;--font-mono:'JetBrains Mono',monospace;
-        position:fixed; inset:0;
-        background:rgba(0,0,0,.75); backdrop-filter:blur(2px);
+        position:fixed;
         z-index:100000;
-        display:flex; align-items:center; justify-content:center;
+        background:var(--bg);
+        border:1px solid var(--gold-dim);
+        border-radius:4px;
+        padding:.9rem 1rem .8rem 1rem;
+        box-shadow:0 10px 40px rgba(0,0,0,.6), 0 0 30px rgba(201,168,76,.08);
         font-family:var(--font-body);
         color:var(--text);
-      }
-      #midi-skills-overlay .modal {
-        background:var(--bg); border:1px solid var(--gold-dim); border-radius:4px;
-        padding:2rem 2.2rem;
-        max-width:95vw; max-height:90vh;
+        max-width:min(95vw, 760px);
+        max-height:min(85vh, 700px);
         display:flex; flex-direction:column;
-        box-shadow:0 0 80px rgba(201,168,76,.08);
+        opacity:0; transform:translateX(-6px);
+        transition:opacity .15s ease, transform .15s ease;
       }
-      #midi-skills-overlay h2 {
-        font-family:var(--font-display); font-weight:900;
-        font-size:1.4rem; color:var(--gold);
+      #midi-skills-popover.shown { opacity:1; transform:translateX(0); }
+      #midi-skills-popover .title {
+        font-family:var(--font-display); font-weight:600;
+        font-size:.75rem; color:var(--gold);
         letter-spacing:.12em; text-transform:uppercase;
-        text-align:center; margin:0 0 .3rem 0;
-        text-shadow:0 0 30px rgba(201,168,76,.2);
-      }
-      #midi-skills-overlay .subtitle {
-        font-family:var(--font-body); font-style:italic;
-        color:var(--text-dim); font-size:.9rem; text-align:center;
-        margin-bottom:1.5rem;
-      }
-      #midi-skills-overlay .skills-wrap {
-        overflow:auto; max-height:65vh; border:1px solid var(--border);
-        border-radius:2px; background:var(--bg2);
-      }
-      #midi-skills-overlay table {
-        border-collapse:collapse; width:100%; font-size:.85rem;
-      }
-      #midi-skills-overlay th, #midi-skills-overlay td {
-        padding:.55rem .9rem; border-bottom:1px solid var(--border);
+        margin:0 0 .6rem 0;
+        padding-bottom:.5rem;
+        border-bottom:1px solid var(--gold-dim);
         text-align:center;
       }
-      #midi-skills-overlay th {
+      #midi-skills-popover .skills-wrap {
+        overflow:auto; flex:1; min-height:0;
+        scrollbar-width:thin; scrollbar-color:var(--gold-dim) var(--bg2);
+      }
+      #midi-skills-popover .skills-wrap::-webkit-scrollbar { width:6px; height:6px; }
+      #midi-skills-popover .skills-wrap::-webkit-scrollbar-thumb { background:var(--gold-dim); }
+      #midi-skills-popover .skills-wrap::-webkit-scrollbar-track { background:var(--bg2); }
+      #midi-skills-popover table {
+        border-collapse:collapse; width:100%; font-size:.75rem;
+      }
+      #midi-skills-popover th, #midi-skills-popover td {
+        padding:.3rem .55rem;
+        border-bottom:1px solid var(--border);
+        text-align:center;
+      }
+      #midi-skills-popover th {
         background:var(--bg3); color:var(--gold);
         font-family:var(--font-display); font-weight:600;
-        font-size:.7rem; letter-spacing:.1em; text-transform:uppercase;
+        font-size:.6rem; letter-spacing:.08em; text-transform:uppercase;
         position:sticky; top:0; z-index:1;
-        border-bottom:2px solid var(--gold-dim);
+        border-bottom:1px solid var(--gold-dim);
+        white-space:nowrap;
       }
-      #midi-skills-overlay th.skill-col { text-align:left; }
-      #midi-skills-overlay td.skill-name {
+      #midi-skills-popover th.skill-col { text-align:left; }
+      #midi-skills-popover td.skill-name {
         text-align:left; white-space:nowrap;
         color:var(--text-bright); font-family:var(--font-body);
-        font-size:.95rem;
+        font-size:.85rem;
       }
-      #midi-skills-overlay td.skill-name .ability {
+      #midi-skills-popover td.skill-name .ability {
         color:var(--text-dim); font-family:var(--font-mono);
-        font-size:.65rem; margin-left:.5rem; letter-spacing:.05em;
+        font-size:.55rem; margin-left:.4rem; letter-spacing:.05em;
       }
-      #midi-skills-overlay td.skill-value {
+      #midi-skills-popover td.skill-value {
         font-family:var(--font-mono); font-weight:600;
         color:var(--text);
+        display:grid;
+        grid-template-columns:1.4rem 1fr 1.4rem;
+        align-items:center;
       }
-      #midi-skills-overlay td.skill-value.muted {
+      #midi-skills-popover td.skill-value .num {
+        grid-column:2; text-align:center;
+      }
+      #midi-skills-popover td.skill-value .stars {
+        grid-column:3; text-align:left; padding-left:.15rem;
+      }
+      #midi-skills-popover td.skill-value.muted {
         color:var(--text-dim); font-weight:400;
       }
-      #midi-skills-overlay td.skill-value.proficient {
+      #midi-skills-popover td.skill-value.proficient {
         color:var(--gold-bright);
       }
-      #midi-skills-overlay tbody tr:hover td {
-        background:rgba(201,168,76,.04);
+      #midi-skills-popover tbody tr:hover td {
+        background:rgba(201,168,76,.05);
       }
-      #midi-skills-overlay .prof {
-        color:var(--gold); margin-left:3px; font-size:.85rem;
+      #midi-skills-popover .prof {
+        color:var(--gold); font-size:.75rem;
       }
-      #midi-skills-overlay .prof.expert { color:var(--gold-bright); }
-      #midi-skills-overlay .prof.half    { color:var(--text-dim); }
-      #midi-skills-overlay .legend {
-        margin-top:1rem; padding-top:.8rem;
+      #midi-skills-popover .prof.expert { color:var(--gold-bright); }
+      #midi-skills-popover .prof.half    { color:var(--text-dim); }
+      #midi-skills-popover .legend {
+        margin-top:.5rem; padding-top:.45rem;
         border-top:1px solid var(--border);
-        color:var(--text-dim); font-size:.75rem;
+        color:var(--text-dim); font-size:.6rem;
         text-align:center; letter-spacing:.05em;
         font-family:var(--font-mono);
       }
-      #midi-skills-overlay .legend .prof { display:inline; margin:0 .2rem 0 0; }
-      #midi-skills-overlay .close-row {
-        text-align:center; margin-top:1.2rem;
-      }
-      #midi-skills-overlay button.close {
-        background:var(--bg3); border:1px solid var(--gold-dim);
-        color:var(--gold);
-        font-family:var(--font-display); font-size:.7rem;
-        letter-spacing:.1em; text-transform:uppercase;
-        padding:.5rem 1.6rem; border-radius:2px; cursor:pointer;
-        transition:all .2s;
-      }
-      #midi-skills-overlay button.close:hover {
-        background:var(--bg4); border-color:var(--gold);
-        color:var(--gold-bright);
-      }
+      #midi-skills-popover .legend .prof { display:inline; margin:0 .15rem; font-size:.75rem; }
     </style>
-    <div class="modal">
-      <h2>Character Skill Sheet</h2>
-      <p class="subtitle">Proficiencies marked with a star</p>
-      <div class="skills-wrap">
-        <table>
-          <thead>${headerRow}</thead>
-          <tbody>${bodyRows}</tbody>
-        </table>
-      </div>
-      <div class="legend">
-        <span class="prof">★</span> Proficient &nbsp;&nbsp;
-        <span class="prof expert">★★</span> Expertise &nbsp;&nbsp;
-        <span class="prof half">☆</span> Half-Proficient
-      </div>
-      <div class="close-row"><button class="close">Close</button></div>
+    <div class="title">Character Skills</div>
+    <div class="skills-wrap">
+      <table>
+        <thead>${headerRow}</thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>
+    <div class="legend">
+      <span class="prof">★</span>Proficient &nbsp;
+      <span class="prof expert">★★</span>Expertise &nbsp;
+      <span class="prof half">☆</span>Half
     </div>
   `;
 
-  document.body.appendChild(overlay);
+  document.body.appendChild(popover);
 
+  // Position next to the button — to the right by default, flip left if no room
+  const margin = 8;
+  const aRect = anchorBtn.getBoundingClientRect();
+  const pRect = popover.getBoundingClientRect();
+  let left = aRect.right + margin;
+  if (left + pRect.width > window.innerWidth - margin) {
+    left = aRect.left - pRect.width - margin;
+    if (left < margin) left = margin;
+  }
+  let top = aRect.top;
+  if (top + pRect.height > window.innerHeight - margin) {
+    top = window.innerHeight - pRect.height - margin;
+  }
+  if (top < margin) top = margin;
+  popover.style.left = `${left}px`;
+  popover.style.top = `${top}px`;
+  requestAnimationFrame(() => popover.classList.add("shown"));
+
+  // Close handler
   const close = () => {
-    overlay.remove();
+    popover.classList.remove("shown");
+    document.removeEventListener("mousedown", onOutside, true);
     document.removeEventListener("keydown", onKey);
+    setTimeout(() => popover.remove(), 200);
+  };
+  popover._close = close;
+
+  const onOutside = (e) => {
+    if (!popover.contains(e.target) && e.target !== anchorBtn && !anchorBtn.contains(e.target)) close();
   };
   const onKey = (e) => { if (e.key === "Escape") close(); };
 
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
-  overlay.querySelector("button.close").addEventListener("click", close);
-  document.addEventListener("keydown", onKey);
+  // Defer to avoid catching the click that opened us
+  setTimeout(() => {
+    document.addEventListener("mousedown", onOutside, true);
+    document.addEventListener("keydown", onKey);
+  }, 0);
 }
