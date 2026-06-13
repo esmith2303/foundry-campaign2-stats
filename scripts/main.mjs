@@ -456,9 +456,11 @@ Hooks.on("renderSceneControls", () => {
 });
 
 function showSkillsSheet() {
+  // Remove existing overlay if open
+  document.getElementById("midi-skills-overlay")?.remove();
+
   const characters = game.actors.contents
     .filter(a => a.hasPlayerOwner && (a.type === "character" || a.type === "npc"))
-    .filter(a => a.hasPlayerOwner)
     .sort((a, b) => a.name.localeCompare(b.name));
 
   if (!characters.length) {
@@ -476,64 +478,164 @@ function showSkillsSheet() {
     return;
   }
 
-  // Build the table
-  const rows = [];
-  rows.push(`<tr><th class="skill-col">Skill</th>${characters.map(c => `<th>${c.name.split(" ")[0]}</th>`).join("")}</tr>`);
+  // Build rows
+  const headerRow = `<tr><th class="skill-col">Skill</th>${characters.map(c =>
+    `<th>${c.name.split(" ")[0]}</th>`).join("")}</tr>`;
 
-  for (const skillKey of skillKeys) {
+  const bodyRows = skillKeys.map(skillKey => {
     const info = skillConfig[skillKey];
     const label = info.label || skillKey;
     const ability = (info.ability || "").toUpperCase();
-    const cells = [`<td class="skill-name">${label}<span class="ability">${ability}</span></td>`];
-
-    for (const char of characters) {
+    const cells = characters.map(char => {
       const skill = char.system?.skills?.[skillKey];
-      if (!skill) { cells.push(`<td class="skill-value">—</td>`); continue; }
+      if (!skill) return `<td class="skill-value muted">—</td>`;
       const total = skill.total ?? 0;
       const sign = total >= 0 ? "+" : "";
       const prof = skill.value ?? (skill.proficient ? 1 : 0);
       let marker = "";
-      if (prof >= 2)   marker = `<span class="prof expert" title="Expertise">★★</span>`;
-      else if (prof >= 1) marker = `<span class="prof" title="Proficient">★</span>`;
+      if (prof >= 2)        marker = `<span class="prof expert" title="Expertise">★★</span>`;
+      else if (prof >= 1)   marker = `<span class="prof" title="Proficient">★</span>`;
       else if (prof >= 0.5) marker = `<span class="prof half" title="Half">☆</span>`;
-      cells.push(`<td class="skill-value">${sign}${total}${marker ? " " + marker : ""}</td>`);
-    }
-    rows.push(`<tr>${cells.join("")}</tr>`);
-  }
+      return `<td class="skill-value${prof >= 1 ? " proficient" : ""}">${sign}${total}${marker ? " " + marker : ""}</td>`;
+    }).join("");
+    return `<tr><td class="skill-name">${label}<span class="ability">${ability}</span></td>${cells}</tr>`;
+  }).join("");
 
-  const html = `
+  const overlay = document.createElement("div");
+  overlay.id = "midi-skills-overlay";
+  overlay.innerHTML = `
     <style>
-      .midi-skills-sheet { font-family: 'Signika', sans-serif; }
-      .midi-skills-sheet .skills-wrap { max-height: 70vh; overflow: auto; }
-      .midi-skills-sheet table { border-collapse: collapse; width: 100%; font-size: 13px; }
-      .midi-skills-sheet th, .midi-skills-sheet td { padding: 5px 10px; border: 1px solid rgba(201,168,76,.2); text-align: center; }
-      .midi-skills-sheet th { background: #1a1a28; color: #c9a84c; position: sticky; top: 0; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; font-size: 11px; }
-      .midi-skills-sheet th.skill-col { text-align: left; }
-      .midi-skills-sheet td.skill-name { text-align: left; white-space: nowrap; color: #d4d0c8; }
-      .midi-skills-sheet td.skill-name .ability { color: #888; font-size: 10px; margin-left: .4rem; font-family: 'Courier New', monospace; }
-      .midi-skills-sheet td.skill-value { font-family: 'Courier New', monospace; font-weight: 600; color: #e8e4d8; }
-      .midi-skills-sheet tbody tr:nth-child(even) td { background: rgba(255,255,255,.025); }
-      .midi-skills-sheet .prof { color: #c9a84c; margin-left: 2px; }
-      .midi-skills-sheet .prof.expert { color: #ffd454; }
-      .midi-skills-sheet .prof.half { color: #999; }
-      .midi-skills-sheet .legend { margin-top: .6rem; color: #888; font-size: 11px; text-align: center; }
+      @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Crimson+Text:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap');
+
+      #midi-skills-overlay {
+        --bg:#0a0a0f;--bg2:#12121a;--bg3:#1a1a28;--bg4:#22223a;
+        --gold:#c9a84c;--gold-dim:#8a6d2b;--gold-bright:#e8c65a;
+        --text:#d4d0c8;--text-dim:#7a7770;--text-bright:#f0ece4;
+        --border:#2a2a3a;
+        --font-display:'Cinzel',serif;--font-body:'Crimson Text',serif;--font-mono:'JetBrains Mono',monospace;
+        position:fixed; inset:0;
+        background:rgba(0,0,0,.75); backdrop-filter:blur(2px);
+        z-index:100000;
+        display:flex; align-items:center; justify-content:center;
+        font-family:var(--font-body);
+        color:var(--text);
+      }
+      #midi-skills-overlay .modal {
+        background:var(--bg); border:1px solid var(--gold-dim); border-radius:4px;
+        padding:2rem 2.2rem;
+        max-width:95vw; max-height:90vh;
+        display:flex; flex-direction:column;
+        box-shadow:0 0 80px rgba(201,168,76,.08);
+      }
+      #midi-skills-overlay h2 {
+        font-family:var(--font-display); font-weight:900;
+        font-size:1.4rem; color:var(--gold);
+        letter-spacing:.12em; text-transform:uppercase;
+        text-align:center; margin:0 0 .3rem 0;
+        text-shadow:0 0 30px rgba(201,168,76,.2);
+      }
+      #midi-skills-overlay .subtitle {
+        font-family:var(--font-body); font-style:italic;
+        color:var(--text-dim); font-size:.9rem; text-align:center;
+        margin-bottom:1.5rem;
+      }
+      #midi-skills-overlay .skills-wrap {
+        overflow:auto; max-height:65vh; border:1px solid var(--border);
+        border-radius:2px; background:var(--bg2);
+      }
+      #midi-skills-overlay table {
+        border-collapse:collapse; width:100%; font-size:.85rem;
+      }
+      #midi-skills-overlay th, #midi-skills-overlay td {
+        padding:.55rem .9rem; border-bottom:1px solid var(--border);
+        text-align:center;
+      }
+      #midi-skills-overlay th {
+        background:var(--bg3); color:var(--gold);
+        font-family:var(--font-display); font-weight:600;
+        font-size:.7rem; letter-spacing:.1em; text-transform:uppercase;
+        position:sticky; top:0; z-index:1;
+        border-bottom:2px solid var(--gold-dim);
+      }
+      #midi-skills-overlay th.skill-col { text-align:left; }
+      #midi-skills-overlay td.skill-name {
+        text-align:left; white-space:nowrap;
+        color:var(--text-bright); font-family:var(--font-body);
+        font-size:.95rem;
+      }
+      #midi-skills-overlay td.skill-name .ability {
+        color:var(--text-dim); font-family:var(--font-mono);
+        font-size:.65rem; margin-left:.5rem; letter-spacing:.05em;
+      }
+      #midi-skills-overlay td.skill-value {
+        font-family:var(--font-mono); font-weight:600;
+        color:var(--text);
+      }
+      #midi-skills-overlay td.skill-value.muted {
+        color:var(--text-dim); font-weight:400;
+      }
+      #midi-skills-overlay td.skill-value.proficient {
+        color:var(--gold-bright);
+      }
+      #midi-skills-overlay tbody tr:hover td {
+        background:rgba(201,168,76,.04);
+      }
+      #midi-skills-overlay .prof {
+        color:var(--gold); margin-left:3px; font-size:.85rem;
+      }
+      #midi-skills-overlay .prof.expert { color:var(--gold-bright); }
+      #midi-skills-overlay .prof.half    { color:var(--text-dim); }
+      #midi-skills-overlay .legend {
+        margin-top:1rem; padding-top:.8rem;
+        border-top:1px solid var(--border);
+        color:var(--text-dim); font-size:.75rem;
+        text-align:center; letter-spacing:.05em;
+        font-family:var(--font-mono);
+      }
+      #midi-skills-overlay .legend .prof { display:inline; margin:0 .2rem 0 0; }
+      #midi-skills-overlay .close-row {
+        text-align:center; margin-top:1.2rem;
+      }
+      #midi-skills-overlay button.close {
+        background:var(--bg3); border:1px solid var(--gold-dim);
+        color:var(--gold);
+        font-family:var(--font-display); font-size:.7rem;
+        letter-spacing:.1em; text-transform:uppercase;
+        padding:.5rem 1.6rem; border-radius:2px; cursor:pointer;
+        transition:all .2s;
+      }
+      #midi-skills-overlay button.close:hover {
+        background:var(--bg4); border-color:var(--gold);
+        color:var(--gold-bright);
+      }
     </style>
-    <div class="midi-skills-sheet">
-      <div class="skills-wrap"><table>${rows.join("")}</table></div>
-      <div class="legend">★ Proficient &nbsp; ★★ Expertise &nbsp; ☆ Half-Proficient</div>
+    <div class="modal">
+      <h2>Character Skill Sheet</h2>
+      <p class="subtitle">Proficiencies marked with a star</p>
+      <div class="skills-wrap">
+        <table>
+          <thead>${headerRow}</thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>
+      <div class="legend">
+        <span class="prof">★</span> Proficient &nbsp;&nbsp;
+        <span class="prof expert">★★</span> Expertise &nbsp;&nbsp;
+        <span class="prof half">☆</span> Half-Proficient
+      </div>
+      <div class="close-row"><button class="close">Close</button></div>
     </div>
   `;
 
-  new Dialog({
-    title: "Character Skill Sheet",
-    content: html,
-    buttons: {
-      close: { icon: '<i class="fas fa-times"></i>', label: "Close" },
-    },
-    default: "close",
-  }, {
-    width: Math.min(900, 220 + characters.length * 100),
-    height: "auto",
-    resizable: true,
-  }).render(true);
+  document.body.appendChild(overlay);
+
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector("button.close").addEventListener("click", close);
+  document.addEventListener("keydown", onKey);
 }
