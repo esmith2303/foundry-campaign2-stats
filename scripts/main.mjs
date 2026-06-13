@@ -77,6 +77,41 @@ async function recordOutcome(actorId, actorName, type, success, source = "?") {
   } catch (e) { console.warn(`${MODULE_ID} | Failed to record outcome:`, e); }
 }
 
+async function recordHealEvent(actorId, actorName) {
+  if (!game.user.isGM || !actorId) return;
+  log(`record heal event ${actorName}`);
+  try {
+    const rolls = game.settings.get(MODULE_ID, "diceRolls") || {};
+    if (!rolls[actorId]) rolls[actorId] = { name: actorName, dice: {}, outcomes: {} };
+    rolls[actorId].name = actorName;
+    rolls[actorId].healCount = (rolls[actorId].healCount || 0) + 1;
+    await game.settings.set(MODULE_ID, "diceRolls", rolls);
+  } catch (e) { console.warn(`${MODULE_ID} | Failed to record heal:`, e); }
+}
+
+function isHealWorkflow(workflow) {
+  // midi-qol parses damage into a list with types
+  if (Array.isArray(workflow.damageList)) {
+    for (const d of workflow.damageList) {
+      if (d?.type === "healing" || d?.type === "temphp") return true;
+    }
+  }
+  // Some versions expose applicableDamageTypes
+  if (Array.isArray(workflow.applicableDamageTypes)) {
+    if (workflow.applicableDamageTypes.some(t => t === "healing" || t === "temphp")) return true;
+  }
+  // Check each damage roll's options/flavor
+  const damageRolls = workflow.damageRolls ?? (workflow.damageRoll ? [workflow.damageRoll] : []);
+  for (const dr of damageRolls) {
+    if (dr?.options?.type === "healing" || dr?.options?.type === "temphp") return true;
+    for (const term of dr?.terms || []) {
+      const flavor = (term.flavor || term.options?.flavor || "").toLowerCase();
+      if (flavor.includes("heal")) return true;
+    }
+  }
+  return false;
+}
+
 function captureFromRoll(actor, roll, source) {
   if (!actor || !roll) return;
   const faces = extractAllDice(roll);
@@ -92,9 +127,54 @@ function getActorFromMessage(message) {
   return null;
 }
 
-// Tracks message IDs we've already recorded a non-attack outcome for
-// (attack outcomes are handled exclusively by midi-qol.AttackRollComplete)
+// Tracks message IDs we've already recorded an outcome for
 const outcomeRecordedForMessage = new Set();
+
+function tryRecordAttackOutcomeFromMessage(message, actor) {
+  if (outcomeRecordedForMessage.has(message.id)) return false;
+
+  const dnd = message.flags?.dnd5e;
+  const midi = message.flags?.["midi-qol"];
+
+  // Is this an attack roll message?
+  const isAttack = dnd?.activity?.type === "attack"
+    || dnd?.roll?.type === "attack"
+    || midi?.roll === "attackRoll"
+    || midi?.type === "attackRoll";
+  if (!isAttack) return false;
+
+  // Find the d20
+  const roll = message.rolls?.[0];
+  if (!roll) return false;
+  let d20 = null;
+  for (const term of roll.terms || []) {
+    if (term.faces === 20 && term.results?.length) {
+      const active = term.results.find(r => r.active !== false);
+      if (active) { d20 = active.result; break; }
+    }
+  }
+
+  // Determine hit/miss
+  let hit = null;
+  if (d20 === 20) hit = true;
+  else if (d20 === 1) hit = false;
+  else if (typeof midi?.isHit === "boolean") hit = midi.isHit;
+  else {
+    // Use target AC from dnd5e flags
+    const targets = dnd?.targets || [];
+    if (targets.length && typeof roll.total === "number") {
+      const ac = targets[0]?.ac;
+      if (typeof ac === "number") hit = roll.total >= ac;
+    }
+  }
+
+  if (hit !== null) {
+    recordOutcome(actor.id, actor.name, "attack", hit, "msg:attack");
+    outcomeRecordedForMessage.add(message.id);
+    return true;
+  }
+  return false;
+}
 
 function tryRecordNonAttackOutcome(message, actor) {
   if (outcomeRecordedForMessage.has(message.id)) return;
@@ -196,6 +276,9 @@ Hooks.on("createChatMessage", (message) => {
   log(`chat msg ${message.id}: actor=${actor.name}, flags:`, Object.keys(message.flags || {}));
   if (message.flags?.dnd5e) log(`  dnd5e:`, JSON.stringify(message.flags.dnd5e).slice(0, 300));
 
+  // Record attack outcomes from the message itself (works even if midi-qol hooks were suppressed)
+  tryRecordAttackOutcomeFromMessage(message, actor);
+
   // Record non-attack outcomes (saves, checks, death)
   tryRecordNonAttackOutcome(message, actor);
 });
@@ -206,6 +289,7 @@ Hooks.on("updateChatMessage", (message) => {
   if (!game.user.isGM) return;
   const actor = getActorFromMessage(message);
   if (!actor) return;
+  tryRecordAttackOutcomeFromMessage(message, actor);
   tryRecordNonAttackOutcome(message, actor);
 });
 
@@ -237,17 +321,23 @@ Hooks.on("midi-qol.AttackRollComplete", (workflow) => {
   log("midi-qol.AttackRollComplete fired, attackTotal:", workflow.attackTotal, "targets:", workflow.targets?.size);
   captureFromRoll(workflow.actor, workflow.attackRoll, "midi.AttackRollComplete");
 
+  // Check if the chat-hook path already recorded this attack
+  const msgIds = [workflow.itemCardId, workflow.chatCardId].filter(Boolean);
+  const alreadyRecorded = msgIds.some(id => outcomeRecordedForMessage.has(id));
+  if (alreadyRecorded) {
+    workflow._statsOutcomeRecorded = true;
+    log("attack outcome already recorded via chat hook, skipping");
+    return;
+  }
+
   const hit = determineHit(workflow);
   if (hit !== null && !workflow._statsOutcomeRecorded) {
     recordOutcome(workflow.actor.id, workflow.actor.name, "attack", hit, "AttackRollComplete-AC");
     workflow._statsOutcomeRecorded = true;
+    msgIds.forEach(id => outcomeRecordedForMessage.add(id));
   } else if (hit === null) {
     log("could not determine hit/miss — no target AC available");
   }
-
-  // Also mark the attack chat message as "outcome handled" to prevent double-counting
-  if (workflow.itemCardId) outcomeRecordedForMessage.add(workflow.itemCardId);
-  if (workflow.chatCardId) outcomeRecordedForMessage.add(workflow.chatCardId);
 });
 
 Hooks.on("midi-qol.DamageRollComplete", (workflow) => {
@@ -256,9 +346,32 @@ Hooks.on("midi-qol.DamageRollComplete", (workflow) => {
   const dr = workflow.damageRolls ?? (workflow.damageRoll ? [workflow.damageRoll] : []);
   for (const r of dr) captureFromRoll(workflow.actor, r, "midi.DamageRollComplete");
 
+  // Detect heal events
+  if (isHealWorkflow(workflow)) {
+    recordHealEvent(workflow.actor.id, workflow.actor.name);
+  }
+
+  // Also capture the d20 from attackRoll here, in case AttackRollComplete was suppressed
+  if (workflow.attackRoll) captureFromRoll(workflow.actor, workflow.attackRoll, "midi.DamageRollComplete(attack)");
+
+  // Determine hit/miss — works whether or not AttackRollComplete already ran
   if (workflow.attackRoll && !workflow._statsOutcomeRecorded) {
-    recordOutcome(workflow.actor.id, workflow.actor.name, "attack", true, "DamageRollComplete-fallback");
+    // Check if chat-hook path already recorded this attack
+    const msgIds = [workflow.itemCardId, workflow.chatCardId].filter(Boolean);
+    const alreadyRecorded = msgIds.some(id => outcomeRecordedForMessage.has(id));
+    if (alreadyRecorded) {
+      workflow._statsOutcomeRecorded = true;
+      log("attack outcome already recorded via chat hook, skipping in DamageRollComplete");
+      return;
+    }
+    const hit = determineHit(workflow);
+    if (hit !== null) {
+      recordOutcome(workflow.actor.id, workflow.actor.name, "attack", hit, "DamageRollComplete-AC");
+    } else {
+      recordOutcome(workflow.actor.id, workflow.actor.name, "attack", true, "DamageRollComplete-fallback");
+    }
     workflow._statsOutcomeRecorded = true;
+    msgIds.forEach(id => outcomeRecordedForMessage.add(id));
   }
 });
 
