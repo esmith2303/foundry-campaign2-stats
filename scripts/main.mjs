@@ -548,7 +548,7 @@ function showSkillsSheet(anchorBtn) {
       #midi-skills-popover .skills-wrap::-webkit-scrollbar-thumb { background:var(--gold-dim); }
       #midi-skills-popover .skills-wrap::-webkit-scrollbar-track { background:var(--bg2); }
       #midi-skills-popover table {
-        border-collapse:collapse; width:auto; font-size:.75rem;
+        border-collapse:separate; border-spacing:0; width:auto; font-size:.75rem;
       }
       #midi-skills-popover th, #midi-skills-popover td {
         padding:.3rem .55rem;
@@ -560,7 +560,7 @@ function showSkillsSheet(anchorBtn) {
         background:var(--bg3); color:var(--gold);
         font-family:var(--font-display); font-weight:600;
         font-size:.6rem; letter-spacing:.08em; text-transform:uppercase;
-        position:sticky; top:0; z-index:1;
+        position:sticky; top:0; z-index:2;
         border-bottom:1px solid var(--gold-dim);
         white-space:nowrap;
       }
