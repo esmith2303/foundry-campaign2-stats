@@ -523,8 +523,8 @@ function showSkillsSheet(anchorBtn) {
         box-shadow:0 10px 40px rgba(0,0,0,.6), 0 0 30px rgba(201,168,76,.08);
         font-family:var(--font-body);
         color:var(--text);
-        max-width:min(95vw, 760px);
-        max-height:min(85vh, 700px);
+        max-width:95vw;
+        max-height:90vh;
         display:flex; flex-direction:column;
         opacity:0; transform:translateX(-6px);
         transition:opacity .15s ease, transform .15s ease;
@@ -547,12 +547,13 @@ function showSkillsSheet(anchorBtn) {
       #midi-skills-popover .skills-wrap::-webkit-scrollbar-thumb { background:var(--gold-dim); }
       #midi-skills-popover .skills-wrap::-webkit-scrollbar-track { background:var(--bg2); }
       #midi-skills-popover table {
-        border-collapse:collapse; width:100%; font-size:.75rem;
+        border-collapse:collapse; width:auto; font-size:.75rem;
       }
       #midi-skills-popover th, #midi-skills-popover td {
         padding:.3rem .55rem;
         border-bottom:1px solid var(--border);
         text-align:center;
+        white-space:nowrap;
       }
       #midi-skills-popover th {
         background:var(--bg3); color:var(--gold);
