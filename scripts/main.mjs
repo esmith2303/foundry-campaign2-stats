@@ -1,6 +1,7 @@
 import { StatsCollector } from "./StatsCollector.mjs";
 import { StatsUploader } from "./StatsUploader.mjs";
 import { registerSettings } from "./settings.mjs";
+import { registerSkillCheck, openSkillCheckDialog } from "./SkillCheck.mjs";
 
 const MODULE_ID = "dnd-group-campaign-2-stats";
 const TRACKED_FACES = [4, 6, 8, 10, 12, 20];
@@ -242,6 +243,7 @@ Hooks.once("ready", () => {
   }
   game.modules.get(MODULE_ID).collector = new StatsCollector(MODULE_ID);
   game.modules.get(MODULE_ID).uploader = new StatsUploader(MODULE_ID);
+  registerSkillCheck();
   console.log(`${MODULE_ID} | Ready — debug mode ON`);
 });
 
@@ -504,7 +506,7 @@ function showSkillsSheet(anchorBtn) {
       else if (prof >= 0.5) marker = `<span class="prof half" title="Half">☆</span>`;
       return `<td class="skill-value${prof >= 1 ? " proficient" : ""}"><div class="cell-inner"><span class="num">${sign}${total}</span><span class="stars">${marker}</span></div></td>`;
     }).join("");
-    return `<tr><td class="skill-name">${label}<span class="ability">${ability}</span></td>${cells}</tr>`;
+    return `<tr><td class="skill-name${game.user.isGM ? " clickable" : ""}" data-skill-key="${skillKey}">${label}<span class="ability">${ability}</span></td>${cells}</tr>`;
   }).join("");
 
   const popover = document.createElement("div");
@@ -575,6 +577,15 @@ function showSkillsSheet(anchorBtn) {
         color:var(--text-bright); font-family:var(--font-body);
         font-size:.85rem;
       }
+      #midi-skills-popover td.skill-name.clickable {
+        cursor:pointer; transition:color .1s, background .1s;
+      }
+      #midi-skills-popover td.skill-name.clickable:hover {
+        color:var(--gold-bright); background:rgba(201,168,76,.08);
+      }
+      #midi-skills-popover td.skill-name.clickable:active {
+        background:rgba(201,168,76,.16);
+      }
       #midi-skills-popover td.skill-name .ability {
         color:var(--text-dim); font-family:var(--font-mono);
         font-size:.55rem; margin-left:.4rem; letter-spacing:.05em;
@@ -632,6 +643,19 @@ function showSkillsSheet(anchorBtn) {
   `;
 
   document.body.appendChild(popover);
+
+  // GM: clicking a skill name opens the skill check dialog
+  if (game.user.isGM) {
+    popover.querySelectorAll("td.skill-name.clickable").forEach(cell => {
+      cell.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const skillKey = cell.dataset.skillKey;
+        if (skillKey) openSkillCheckDialog(skillKey);
+        // Close popover after launching the dialog
+        popover._close?.();
+      });
+    });
+  }
 
   // Position next to the button — to the right by default, flip left if no room
   const margin = 8;
