@@ -284,6 +284,60 @@ function injectStylesOnce() {
       border-bottom:1px solid #d8d6c8;
     }
     .skill-check-card .player-row:last-child { border-bottom:none; }
+    .skill-check-card .player-row.rolled {
+      flex-direction:column; align-items:stretch;
+      padding:0;
+    }
+    .skill-check-card .player-row.rolled .player-row-main {
+      display:flex; align-items:center; gap:.45em;
+      padding:.32em .15em;
+    }
+    .skill-check-card .player-row.rolled.has-breakdown .player-row-main {
+      cursor:pointer;
+      transition:background .1s;
+    }
+    .skill-check-card .player-row.rolled.has-breakdown .player-row-main:hover {
+      background:rgba(0,0,0,.04);
+    }
+    .skill-check-card .expand-arrow {
+      width:1.2em; text-align:center;
+      color:#888; font-size:.75em;
+      transition:transform .15s;
+      margin-left:.1em;
+    }
+    .skill-check-card .player-row.expanded .expand-arrow {
+      transform:rotate(180deg);
+    }
+    .skill-check-card .roll-breakdown {
+      display:none;
+      padding:.4em .8em .5em .8em;
+      background:#e8e3d0;
+      border-top:1px dashed #c9a84c;
+      font-size:.85em;
+    }
+    .skill-check-card .player-row.expanded .roll-breakdown {
+      display:block;
+    }
+    .skill-check-card .bd-row {
+      display:flex; justify-content:space-between; align-items:baseline;
+      padding:.12em 0;
+    }
+    .skill-check-card .bd-label { color:#5b5949; }
+    .skill-check-card .bd-value {
+      font-family:"Signika",sans-serif; font-weight:600;
+      color:#1f1f1f;
+    }
+    .skill-check-card .bd-kept { color:#1f1f1f; font-weight:700; }
+    .skill-check-card .bd-dropped {
+      color:#aaa; text-decoration:line-through;
+      margin-left:.4em; font-weight:400;
+    }
+    .skill-check-card .bd-row.bd-total {
+      border-top:1px solid #c9a84c;
+      margin-top:.15em; padding-top:.3em;
+      font-weight:700;
+    }
+    .skill-check-card .bd-row.bd-total .bd-value { font-size:1.05em; }
     .skill-check-card .roll-btn {
       width:26px; height:26px;
       background:#fff !important;
@@ -561,13 +615,19 @@ function renderCheckContent(state) {
 
     const statusClass = r.success ? "success" : "failure";
     const statusGlyph = r.success ? "✓" : "✗";
+    const breakdownHtml = renderBreakdown(r.breakdown);
+    const hasBreakdown = !!breakdownHtml;
     return `
-      <li class="player-row rolled" data-actor-id="${p.actorId}">
-        <span class="rolled-icon"><i class="fas fa-dice-d20"></i></span>
-        <span class="player-name">${escapeHtml(p.actorName)}</span>
-        ${modeTag}
-        <span class="roll-result" data-total="${r.total}">${r.total}</span>
-        <span class="roll-status ${statusClass}" data-success="${r.success ? "1" : "0"}">${statusGlyph}</span>
+      <li class="player-row rolled${hasBreakdown ? " has-breakdown" : ""}" data-actor-id="${p.actorId}">
+        <div class="player-row-main">
+          <span class="rolled-icon"><i class="fas fa-dice-d20"></i></span>
+          <span class="player-name">${escapeHtml(p.actorName)}</span>
+          ${modeTag}
+          <span class="roll-result" data-total="${r.total}">${r.total}</span>
+          <span class="roll-status ${statusClass}" data-success="${r.success ? "1" : "0"}">${statusGlyph}</span>
+          ${hasBreakdown ? `<span class="expand-arrow"><i class="fas fa-chevron-down"></i></span>` : ""}
+        </div>
+        ${breakdownHtml}
       </li>`;
   }).join("");
 
@@ -650,6 +710,10 @@ function onRenderChatMessage(message, html, _data) {
         el.textContent = "rolled";
         el.classList.add("placeholder");
       }
+      // No breakdowns for players when rolls are blind
+      for (const bd of card.querySelectorAll(".roll-breakdown")) bd.remove();
+      for (const arrow of card.querySelectorAll(".expand-arrow")) arrow.remove();
+      for (const row of card.querySelectorAll(".player-row.rolled")) row.classList.remove("has-breakdown");
       if (resultEls.length) console.log(`${MODULE_ID} | Blind roll applied to ${resultEls.length} results`);
     }
     if (state.blindDC || state.blindRoll) {
@@ -662,6 +726,23 @@ function onRenderChatMessage(message, html, _data) {
         groupFinal.innerHTML = `Group check complete (${state.players.length} rolled) — result hidden`;
         groupFinal.classList.add("muted");
       }
+    }
+  }
+
+  // ── Wire expand/collapse on rolled rows that have a breakdown ─────────
+  for (const row of card.querySelectorAll(".player-row.rolled.has-breakdown")) {
+    const actorId = row.dataset.actorId;
+    const key = `${message.id}-${actorId}`;
+    if (_expandedKeys.has(key)) row.classList.add("expanded");
+
+    const main = row.querySelector(".player-row-main");
+    if (main) {
+      main.addEventListener("click", (e) => {
+        if (e.target.closest("button")) return; // don't toggle if clicking a button
+        row.classList.toggle("expanded");
+        if (row.classList.contains("expanded")) _expandedKeys.add(key);
+        else _expandedKeys.delete(key);
+      });
     }
   }
 
@@ -716,44 +797,95 @@ async function onPlayerRollClick(messageId, actorId, mode) {
   if (!message || !state) return;
 
   const actor = game.actors.get(actorId);
-  if (!actor?.isOwner) return ui.notifications.warn("Not your character.");
+  if (!actor || !userOwnsActor(actor, game.user)) return ui.notifications.warn("Not your character.");
   if (state.rolls?.[actorId]) return;
 
-  const rollOptions = {
-    advantage: mode === "adv",
-    disadvantage: mode === "dis",
-    chatMessage: false,        // try to suppress entirely (older dnd5e)
-    fastForward: true,         // skip the default dnd5e roll dialog
-    targetValue: state.dc,     // dnd5e records DC for success eval
-  };
-  // Belt-and-braces: if the standard roll card still gets created, make it
-  // visible to GMs only. Otherwise let it show publicly.
-  if (state.blindRoll) {
-    rollOptions.rollMode = "blindroll";
-    rollOptions.create = false;            // newer dnd5e key for "don't post message"
-    rollOptions.createMessage = false;     // some versions use this name
-  }
-
   let roll;
-  try {
-    roll = await actor.rollSkill({ skill: state.skillKey, ...rollOptions });
-  } catch (e1) {
+
+  if (state.blindRoll) {
+    // ── BLIND ROLL ──
+    // Bypass dnd5e.rollSkill (which ignores chatMessage:false / rollMode:blindroll
+    // in newer versions) and build the roll manually. Then whisper a chat card
+    // to GMs only so the GM sees the dice + total but players see nothing.
+    //
+    // Bonuses captured:
+    //   - skill.total          → ability mod + proficiency + flat AE bonuses
+    //   - bonuses.abilities.check → Guidance, Bardic Inspiration applied as AE
+    //   - bonuses.abilities.skill → global skill bonus (rarely used)
+    //   - skill.bonuses.check  → skill-specific bonus
+    // Bless does not normally affect skill checks under RAW; if you've set Bless
+    // to apply to ability checks via active effect, it'll appear in
+    // bonuses.abilities.check and be included automatically.
+    const formula = buildBlindRollFormula(actor, state.skillKey, mode);
+    const rollData = actor.getRollData ? actor.getRollData() : {};
+    console.log(`${MODULE_ID} | Blind roll formula for ${actor.name}: ${formula}`);
     try {
-      roll = await actor.rollSkill(state.skillKey, rollOptions);
-    } catch (e2) {
-      console.error(`${MODULE_ID} | rollSkill failed:`, e1, e2);
-      ui.notifications.error("Skill roll failed — check console.");
+      roll = new Roll(formula, rollData);
+      await roll.evaluate();
+    } catch (e) {
+      console.error(`${MODULE_ID} | Manual blind roll failed:`, e);
+      ui.notifications.error("Roll failed — see console.");
       return;
     }
+    // Whisper a roll card to GMs only so they get the dice animation + detail.
+    // Also tag with dnd5e.roll flags so the existing dice/outcome tracker
+    // (createChatMessage hook in main.mjs) records this as a skill check.
+    try {
+      const gmIds = game.users.filter(u => u.isGM).map(u => u.id);
+      await ChatMessage.create({
+        user: game.user.id,
+        speaker: ChatMessage.getSpeaker({ actor }),
+        flavor: `<i>${escapeHtml(state.skillLabel)} (blind) — ${escapeHtml(actor.name)}</i>`,
+        rolls: [roll],
+        rollMode: "blindroll",
+        whisper: gmIds,
+        blind: true,
+        flags: {
+          dnd5e: {
+            roll: {
+              type: "skill",
+              skillId: state.skillKey,
+              dc: state.dc,
+              success: (roll.total ?? 0) >= state.dc,
+            },
+          },
+          [MODULE_ID]: { blindSkillRoll: true },
+        },
+      });
+    } catch (e) {
+      console.warn(`${MODULE_ID} | Couldn't whisper blind roll to GM:`, e);
+    }
+  } else {
+    // ── PUBLIC ROLL ──
+    // Use dnd5e's full rollSkill so the standard chat card appears with all
+    // modifiers, advantage UI, etc.
+    const rollOptions = {
+      advantage: mode === "adv",
+      disadvantage: mode === "dis",
+      fastForward: true,
+      targetValue: state.dc,
+    };
+    try {
+      roll = await actor.rollSkill({ skill: state.skillKey, ...rollOptions });
+    } catch (e1) {
+      try {
+        roll = await actor.rollSkill(state.skillKey, rollOptions);
+      } catch (e2) {
+        console.error(`${MODULE_ID} | rollSkill failed:`, e1, e2);
+        ui.notifications.error("Skill roll failed — check console.");
+        return;
+      }
+    }
+    if (Array.isArray(roll)) roll = roll[0];
   }
-  if (Array.isArray(roll)) roll = roll[0];
   if (!roll) return;
 
   const total = roll.total;
   const formula = roll.formula || "";
   const success = total >= state.dc;
+  const breakdown = extractBreakdown(roll, mode);
 
-  const payload = { messageId, actorId, total, formula, success };
+  const payload = { messageId, actorId, total, formula, success, breakdown };
   if (game.user.isGM) {
     await applyRollUpdate(payload);
   } else {
@@ -769,13 +901,13 @@ function onSocket(data) {
   applyRollUpdate(data).catch(err => console.error(`${MODULE_ID} | applyRollUpdate:`, err));
 }
 
-async function applyRollUpdate({ messageId, actorId, total, formula, success }) {
+async function applyRollUpdate({ messageId, actorId, total, formula, success, breakdown }) {
   const message = game.messages.get(messageId);
   const state = message?.flags?.[MODULE_ID]?.skillCheck;
   if (!message || !state) return;
   if (state.rolls?.[actorId]) return;
 
-  const newRolls = { ...(state.rolls || {}), [actorId]: { total, formula, success } };
+  const newRolls = { ...(state.rolls || {}), [actorId]: { total, formula, success, breakdown } };
   const newState = { ...state, rolls: newRolls };
   const newContent = renderCheckContent(newState);
 
@@ -789,4 +921,144 @@ function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   })[c]);
+}
+
+/**
+ * Extract roll breakdown (d20 result, bonus dice, modifier) from a Roll instance.
+ * Works for both Foundry raw Rolls and dnd5e D20Rolls. The modifier is
+ * computed implicitly as (total - sum of all dice) so it's always correct
+ * regardless of how the underlying terms are structured.
+ */
+function extractBreakdown(roll, mode) {
+  const breakdown = {
+    mode,
+    d20Result: null,
+    d20Dropped: null,
+    bonusDice: [],
+    modifier: 0,
+    total: roll.total ?? 0,
+    formula: roll.formula || "",
+  };
+
+  const dice = roll.dice || [];
+  let mainD20Found = false;
+
+  for (const die of dice) {
+    const faces = die.faces;
+    const results = die.results || [];
+    const active = results.filter(r => !r.discarded && r.active !== false);
+    const dropped = results.filter(r => r.discarded || r.active === false);
+
+    if (faces === 20 && !mainD20Found) {
+      breakdown.d20Result = active[0]?.result ?? null;
+      if (dropped.length) breakdown.d20Dropped = dropped[0]?.result ?? null;
+      mainD20Found = true;
+    } else {
+      const sum = active.reduce((s, r) => s + r.result, 0);
+      breakdown.bonusDice.push({
+        formula: `${die.number || 1}d${faces}`,
+        result: sum,
+        rolls: active.map(r => r.result),
+      });
+    }
+  }
+
+  const diceSum = (breakdown.d20Result || 0) + breakdown.bonusDice.reduce((s, b) => s + b.result, 0);
+  breakdown.modifier = breakdown.total - diceSum;
+
+  return breakdown;
+}
+
+/** Track which player rows are expanded per session (keyed by messageId-actorId). */
+const _expandedKeys = new Set();
+
+/**
+ * Render the dropdown breakdown HTML for a rolled row. Returns "" if no
+ * breakdown data is available (e.g., older rolls created before this feature).
+ */
+function renderBreakdown(breakdown) {
+  if (!breakdown || breakdown.d20Result === null || breakdown.d20Result === undefined) return "";
+  const { mode, d20Result, d20Dropped, bonusDice = [], modifier = 0, total = 0 } = breakdown;
+
+  const modeLabel = mode === "adv" ? " (advantage)" : mode === "dis" ? " (disadvantage)" : "";
+  const d20ValueHtml = (d20Dropped !== null && d20Dropped !== undefined)
+    ? `<span class="bd-kept">${d20Result}</span><span class="bd-dropped">${d20Dropped}</span>`
+    : `<span class="bd-kept">${d20Result}</span>`;
+
+  let html = `
+    <div class="bd-row">
+      <span class="bd-label">1d20${modeLabel}</span>
+      <span class="bd-value">${d20ValueHtml}</span>
+    </div>
+  `;
+
+  for (const bd of bonusDice) {
+    const rolls = bd.rolls || [];
+    const valueStr = rolls.length > 1
+      ? `${rolls.join(" + ")} = ${bd.result}`
+      : `${bd.result}`;
+    html += `
+      <div class="bd-row">
+        <span class="bd-label">${escapeHtml(bd.formula)}</span>
+        <span class="bd-value">${escapeHtml(valueStr)}</span>
+      </div>
+    `;
+  }
+
+  if (modifier !== 0) {
+    html += `
+      <div class="bd-row">
+        <span class="bd-label">Modifier</span>
+        <span class="bd-value">${modifier >= 0 ? "+" : ""}${modifier}</span>
+      </div>
+    `;
+  }
+
+  html += `
+    <div class="bd-row bd-total">
+      <span class="bd-label">Total</span>
+      <span class="bd-value">${total}</span>
+    </div>
+  `;
+
+  return `<div class="roll-breakdown">${html}</div>`;
+}
+
+/**
+ * Build a d20 + modifier + bonuses formula for a blind skill check.
+ * Captures everything dnd5e would normally pick up at roll time:
+ *  - skill.total: ability mod + proficiency + flat active-effect bonuses
+ *  - bonuses.abilities.check: dice bonuses (Guidance "1d4", Bardic Inspiration "1d6/d8/d10/d12")
+ *  - bonuses.abilities.skill: global skill bonus
+ *  - skill.bonuses.check: skill-specific bonus
+ */
+function buildBlindRollFormula(actor, skillKey, mode) {
+  const skill = actor.system?.skills?.[skillKey];
+  const mod = Number.isFinite(skill?.total) ? skill.total : 0;
+  const checkBonus = actor.system?.bonuses?.abilities?.check || "";
+  const skillBonus = actor.system?.bonuses?.abilities?.skill || "";
+  const specificBonus = skill?.bonuses?.check || "";
+
+  const parts = [];
+  parts.push(mode === "adv" ? "2d20kh" : mode === "dis" ? "2d20kl" : "1d20");
+
+  if (mod !== 0) {
+    parts.push((mod >= 0 ? "+ " : "- ") + Math.abs(mod));
+  }
+
+  const cleanBonus = (b) => {
+    if (!b) return null;
+    const trimmed = String(b).trim();
+    if (!trimmed || trimmed === "0" || trimmed === "+0" || trimmed === "-0") return null;
+    if (!/^[+-]/.test(trimmed)) return "+ " + trimmed;
+    // Normalize the spacing around the leading +/-
+    return trimmed.replace(/^([+-])\s*/, "$1 ");
+  };
+
+  for (const b of [checkBonus, skillBonus, specificBonus]) {
+    const c = cleanBonus(b);
+    if (c) parts.push(c);
+  }
+
+  return parts.join(" ");
 }
