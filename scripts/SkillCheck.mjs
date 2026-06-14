@@ -810,7 +810,7 @@ async function onPlayerRollClick(messageId, actorId, mode) {
   // Always build & evaluate the roll manually so that:
   //   1. The DM's chosen mode (adv/normal/dis) is honored — no player prompt
   //   2. We can capture Guidance, Bardic Inspiration, etc. via active effects
-  //   3. No standard dnd5e roll card appears publicly — players only see our card
+  //   3. No chat roll cards appear anywhere — players + GM only see our card
   const formula = buildBlindRollFormula(actor, state.skillKey, mode);
   const rollData = actor.getRollData ? actor.getRollData() : {};
   console.log(`${MODULE_ID} | Roll formula for ${actor.name} (${mode}): ${formula}`);
@@ -825,38 +825,14 @@ async function onPlayerRollClick(messageId, actorId, mode) {
     return;
   }
 
-  // Always whisper a tracker card to GMs. This serves two purposes:
-  //   1. Triggers the existing dice/outcome tracker (main.mjs createChatMessage)
-  //      so d20s + bonus dice + check success/failure get recorded for the dashboard
-  //   2. Lets the GM see the dnd5e-style roll card with full detail + DSN
-  // Players never see this card; they see only our skill-check card with the
-  // breakdown (or "rolled" if blindRoll is on).
-  try {
-    const gmIds = game.users.filter(u => u.isGM).map(u => u.id);
-    const success = (roll.total ?? 0) >= state.dc;
-    const labelSuffix = state.blindRoll ? " (blind)" : "";
-    await ChatMessage.create({
-      user: game.user.id,
-      speaker: ChatMessage.getSpeaker({ actor }),
-      flavor: `<i>${escapeHtml(state.skillLabel)}${labelSuffix} — ${escapeHtml(actor.name)}</i>`,
-      rolls: [roll],
-      rollMode: state.blindRoll ? "blindroll" : "gmroll",
-      whisper: gmIds,
-      blind: !!state.blindRoll,
-      flags: {
-        dnd5e: {
-          roll: {
-            type: "skill",
-            skillId: state.skillKey,
-            dc: state.dc,
-            success,
-          },
-        },
-        [MODULE_ID]: { skillCheckRoll: true, blind: !!state.blindRoll },
-      },
-    });
-  } catch (e) {
-    console.warn(`${MODULE_ID} | Couldn't post tracker card:`, e);
+  // For non-blind rolls, fire the 3D dice animation publicly so everyone
+  // gets the satisfying dice roll. Skip for blind so nothing visibly happens.
+  if (!state.blindRoll && game.dice3d) {
+    try {
+      await game.dice3d.showForRoll(roll, game.user, true);
+    } catch (e) {
+      console.warn(`${MODULE_ID} | DSN show failed:`, e);
+    }
   }
 
   const total = roll.total;
@@ -894,6 +870,63 @@ async function applyRollUpdate({ messageId, actorId, total, formula, success, br
     content: newContent,
     flags: { [MODULE_ID]: { skillCheck: newState } },
   });
+
+  // Record dice + check outcome to the module's diceRolls setting so the
+  // dashboard picks it up (same store the main.mjs tracker writes to).
+  const actor = game.actors.get(actorId);
+  if (actor && breakdown) {
+    try {
+      await trackSkillCheck(actor, breakdown, success);
+    } catch (e) {
+      console.warn(`${MODULE_ID} | trackSkillCheck failed:`, e);
+    }
+  }
+}
+
+/**
+ * Explicitly track a skill check's dice + outcome into the module's diceRolls
+ * setting (same store that main.mjs's createChatMessage tracker writes to).
+ * Only runs on the GM client to avoid races with multiple writers.
+ */
+async function trackSkillCheck(actor, breakdown, success) {
+  if (!game.user.isGM) return;
+
+  const store = game.settings.get(MODULE_ID, "diceRolls") || {};
+  if (!store[actor.id]) {
+    store[actor.id] = { name: actor.name, dice: {}, outcomes: {} };
+  }
+  const data = store[actor.id];
+  if (!data.dice) data.dice = {};
+  if (!data.outcomes) data.outcomes = {};
+
+  const recordFace = (faces, value) => {
+    const k = String(faces);
+    if (!data.dice[k]) data.dice[k] = {};
+    const v = String(value);
+    data.dice[k][v] = (data.dice[k][v] || 0) + 1;
+  };
+
+  // d20 — track both kept and dropped so raw dice luck is reflected
+  if (breakdown.d20Result != null) recordFace(20, breakdown.d20Result);
+  if (breakdown.d20Dropped != null) recordFace(20, breakdown.d20Dropped);
+
+  // Bonus dice from Guidance, Bardic Inspiration, etc.
+  for (const bd of (breakdown.bonusDice || [])) {
+    const facesMatch = bd.formula?.match?.(/d(\d+)/);
+    if (!facesMatch) continue;
+    const faces = parseInt(facesMatch[1]);
+    if (![4, 6, 8, 10, 12].includes(faces)) continue;
+    for (const result of (bd.rolls || [])) {
+      recordFace(faces, result);
+    }
+  }
+
+  // Check success/failure outcome
+  if (!data.outcomes.check) data.outcomes.check = { success: 0, failure: 0 };
+  data.outcomes.check[success ? "success" : "failure"] += 1;
+
+  await game.settings.set(MODULE_ID, "diceRolls", store);
+  console.log(`${MODULE_ID} | Tracked skill check for ${actor.name}: success=${success}, d20=${breakdown.d20Result}${breakdown.d20Dropped != null ? `/${breakdown.d20Dropped}` : ""}, bonus=${(breakdown.bonusDice || []).map(b => b.formula + "=" + b.result).join(",") || "none"}`);
 }
 
 function escapeHtml(s) {
