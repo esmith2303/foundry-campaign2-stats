@@ -229,6 +229,8 @@ function injectStylesOnce() {
     /* ─── CHAT CARD (matches dnd5e/midi-qol look) ──────────────────────── */
     .skill-check-card {
       font-family:"Signika",sans-serif;
+      font-size:14px;
+      line-height:1.35;
       background:#f0f0e0;
       border:1px solid #6f6c66;
       border-radius:3px;
@@ -310,10 +312,10 @@ function injectStylesOnce() {
     }
     .skill-check-card .roll-breakdown {
       display:none;
-      padding:.4em .8em .5em .8em;
+      padding:.45em .9em .55em .9em;
       background:#e8e3d0;
       border-top:1px dashed #c9a84c;
-      font-size:.85em;
+      font-size:.95em;
     }
     .skill-check-card .player-row.expanded .roll-breakdown {
       display:block;
@@ -327,10 +329,15 @@ function injectStylesOnce() {
       font-family:"Signika",sans-serif; font-weight:600;
       color:#1f1f1f;
     }
-    .skill-check-card .bd-kept { color:#1f1f1f; font-weight:700; }
+    .skill-check-card .bd-kept { color:#1f1f1f; font-weight:700; font-size:1.05em; }
     .skill-check-card .bd-dropped {
-      color:#aaa; text-decoration:line-through;
-      margin-left:.4em; font-weight:400;
+      color:#8a6f3a;
+      text-decoration:line-through;
+      text-decoration-color:rgba(122,40,40,.55);
+      text-decoration-thickness:1.5px;
+      margin-left:.55em;
+      font-weight:600;
+      opacity:.85;
     }
     .skill-check-card .bd-row.bd-total {
       border-top:1px solid #c9a84c;
@@ -800,92 +807,64 @@ async function onPlayerRollClick(messageId, actorId, mode) {
   if (!actor || !userOwnsActor(actor, game.user)) return ui.notifications.warn("Not your character.");
   if (state.rolls?.[actorId]) return;
 
-  let roll;
+  // Always build & evaluate the roll manually so that:
+  //   1. The DM's chosen mode (adv/normal/dis) is honored — no player prompt
+  //   2. We can capture Guidance, Bardic Inspiration, etc. via active effects
+  //   3. No standard dnd5e roll card appears publicly — players only see our card
+  const formula = buildBlindRollFormula(actor, state.skillKey, mode);
+  const rollData = actor.getRollData ? actor.getRollData() : {};
+  console.log(`${MODULE_ID} | Roll formula for ${actor.name} (${mode}): ${formula}`);
 
-  if (state.blindRoll) {
-    // ── BLIND ROLL ──
-    // Bypass dnd5e.rollSkill (which ignores chatMessage:false / rollMode:blindroll
-    // in newer versions) and build the roll manually. Then whisper a chat card
-    // to GMs only so the GM sees the dice + total but players see nothing.
-    //
-    // Bonuses captured:
-    //   - skill.total          → ability mod + proficiency + flat AE bonuses
-    //   - bonuses.abilities.check → Guidance, Bardic Inspiration applied as AE
-    //   - bonuses.abilities.skill → global skill bonus (rarely used)
-    //   - skill.bonuses.check  → skill-specific bonus
-    // Bless does not normally affect skill checks under RAW; if you've set Bless
-    // to apply to ability checks via active effect, it'll appear in
-    // bonuses.abilities.check and be included automatically.
-    const formula = buildBlindRollFormula(actor, state.skillKey, mode);
-    const rollData = actor.getRollData ? actor.getRollData() : {};
-    console.log(`${MODULE_ID} | Blind roll formula for ${actor.name}: ${formula}`);
-    try {
-      roll = new Roll(formula, rollData);
-      await roll.evaluate();
-    } catch (e) {
-      console.error(`${MODULE_ID} | Manual blind roll failed:`, e);
-      ui.notifications.error("Roll failed — see console.");
-      return;
-    }
-    // Whisper a roll card to GMs only so they get the dice animation + detail.
-    // Also tag with dnd5e.roll flags so the existing dice/outcome tracker
-    // (createChatMessage hook in main.mjs) records this as a skill check.
-    try {
-      const gmIds = game.users.filter(u => u.isGM).map(u => u.id);
-      await ChatMessage.create({
-        user: game.user.id,
-        speaker: ChatMessage.getSpeaker({ actor }),
-        flavor: `<i>${escapeHtml(state.skillLabel)} (blind) — ${escapeHtml(actor.name)}</i>`,
-        rolls: [roll],
-        rollMode: "blindroll",
-        whisper: gmIds,
-        blind: true,
-        flags: {
-          dnd5e: {
-            roll: {
-              type: "skill",
-              skillId: state.skillKey,
-              dc: state.dc,
-              success: (roll.total ?? 0) >= state.dc,
-            },
-          },
-          [MODULE_ID]: { blindSkillRoll: true },
-        },
-      });
-    } catch (e) {
-      console.warn(`${MODULE_ID} | Couldn't whisper blind roll to GM:`, e);
-    }
-  } else {
-    // ── PUBLIC ROLL ──
-    // Use dnd5e's full rollSkill so the standard chat card appears with all
-    // modifiers, advantage UI, etc.
-    const rollOptions = {
-      advantage: mode === "adv",
-      disadvantage: mode === "dis",
-      fastForward: true,
-      targetValue: state.dc,
-    };
-    try {
-      roll = await actor.rollSkill({ skill: state.skillKey, ...rollOptions });
-    } catch (e1) {
-      try {
-        roll = await actor.rollSkill(state.skillKey, rollOptions);
-      } catch (e2) {
-        console.error(`${MODULE_ID} | rollSkill failed:`, e1, e2);
-        ui.notifications.error("Skill roll failed — check console.");
-        return;
-      }
-    }
-    if (Array.isArray(roll)) roll = roll[0];
+  let roll;
+  try {
+    roll = new Roll(formula, rollData);
+    await roll.evaluate();
+  } catch (e) {
+    console.error(`${MODULE_ID} | Roll failed:`, e);
+    ui.notifications.error("Roll failed — see console.");
+    return;
   }
-  if (!roll) return;
+
+  // Always whisper a tracker card to GMs. This serves two purposes:
+  //   1. Triggers the existing dice/outcome tracker (main.mjs createChatMessage)
+  //      so d20s + bonus dice + check success/failure get recorded for the dashboard
+  //   2. Lets the GM see the dnd5e-style roll card with full detail + DSN
+  // Players never see this card; they see only our skill-check card with the
+  // breakdown (or "rolled" if blindRoll is on).
+  try {
+    const gmIds = game.users.filter(u => u.isGM).map(u => u.id);
+    const success = (roll.total ?? 0) >= state.dc;
+    const labelSuffix = state.blindRoll ? " (blind)" : "";
+    await ChatMessage.create({
+      user: game.user.id,
+      speaker: ChatMessage.getSpeaker({ actor }),
+      flavor: `<i>${escapeHtml(state.skillLabel)}${labelSuffix} — ${escapeHtml(actor.name)}</i>`,
+      rolls: [roll],
+      rollMode: state.blindRoll ? "blindroll" : "gmroll",
+      whisper: gmIds,
+      blind: !!state.blindRoll,
+      flags: {
+        dnd5e: {
+          roll: {
+            type: "skill",
+            skillId: state.skillKey,
+            dc: state.dc,
+            success,
+          },
+        },
+        [MODULE_ID]: { skillCheckRoll: true, blind: !!state.blindRoll },
+      },
+    });
+  } catch (e) {
+    console.warn(`${MODULE_ID} | Couldn't post tracker card:`, e);
+  }
 
   const total = roll.total;
-  const formula = roll.formula || "";
+  const formulaStr = roll.formula || "";
   const success = total >= state.dc;
   const breakdown = extractBreakdown(roll, mode);
 
-  const payload = { messageId, actorId, total, formula, success, breakdown };
+  const payload = { messageId, actorId, total, formula: formulaStr, success, breakdown };
   if (game.user.isGM) {
     await applyRollUpdate(payload);
   } else {
