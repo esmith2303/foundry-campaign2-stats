@@ -722,10 +722,17 @@ async function onPlayerRollClick(messageId, actorId, mode) {
   const rollOptions = {
     advantage: mode === "adv",
     disadvantage: mode === "dis",
-    chatMessage: false,
-    fastForward: true,
-    targetValue: state.dc,
+    chatMessage: false,        // try to suppress entirely (older dnd5e)
+    fastForward: true,         // skip the default dnd5e roll dialog
+    targetValue: state.dc,     // dnd5e records DC for success eval
   };
+  // Belt-and-braces: if the standard roll card still gets created, make it
+  // visible to GMs only. Otherwise let it show publicly.
+  if (state.blindRoll) {
+    rollOptions.rollMode = "blindroll";
+    rollOptions.create = false;            // newer dnd5e key for "don't post message"
+    rollOptions.createMessage = false;     // some versions use this name
+  }
 
   let roll;
   try {
