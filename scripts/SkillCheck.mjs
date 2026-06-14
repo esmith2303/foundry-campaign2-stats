@@ -14,8 +14,12 @@ export function registerSkillCheck() {
   injectStylesOnce();
   // Socket bridge so non-GM clients can ask the GM to mutate the chat card
   game.socket.on(SOCKET, onSocket);
-  // Bind roll buttons + apply blind visibility every time a chat card renders
+  // Bind roll buttons + apply blind visibility every time a chat card renders.
+  // V13 replaces renderChatMessage with renderChatMessageHTML; register BOTH
+  // so we work on V11/V12 (jQuery) and V13 (HTMLElement).
   Hooks.on("renderChatMessage", onRenderChatMessage);
+  Hooks.on("renderChatMessageHTML", onRenderChatMessage);
+  console.log(`${MODULE_ID} | SkillCheck registered for user ${game.user.name} (GM=${game.user.isGM})`);
 }
 
 /** Called from the popover when GM clicks a skill name. */
@@ -606,7 +610,7 @@ function renderCheckContent(state) {
 }
 
 /**
- * Per-client render hook:
+ * Per-client render hook (V11/V12 jQuery + V13 HTMLElement).
  *  - Adds dice click handlers (only enabled for actor owners)
  *  - Applies blind rules by mutating the DOM for non-GM viewers
  */
@@ -614,34 +618,47 @@ function onRenderChatMessage(message, html, _data) {
   const state = message.flags?.[MODULE_ID]?.skillCheck;
   if (!state) return;
 
-  const root = html[0] || html.get(0);
-  const card = root?.querySelector?.(".skill-check-card");
+  // html may be a jQuery wrapper (V12) or an HTMLElement (V13)
+  const root = (html instanceof HTMLElement) ? html
+             : (html?.[0]) ? html[0]
+             : (html?.get) ? html.get(0)
+             : null;
+  if (!root) return;
+
+  const card = root.querySelector?.(".skill-check-card");
   if (!card) return;
 
+  // Dedup: both renderChatMessage and renderChatMessageHTML may fire on V13
+  if (card._scProcessed) return;
+  card._scProcessed = true;
+
   const isGM = game.user.isGM;
+  console.log(`${MODULE_ID} | renderChatMessage user=${game.user.name} isGM=${isGM} blindDC=${state.blindDC} blindRoll=${state.blindRoll}`);
 
   // ── Apply blind rules for non-GM viewers ──────────────────────────────
   if (!isGM) {
     if (state.blindDC) {
       const dcBadge = card.querySelector(".dc-badge");
-      if (dcBadge) dcBadge.textContent = "DC ??";
+      if (dcBadge) {
+        dcBadge.textContent = "DC ??";
+        console.log(`${MODULE_ID} | Blind DC applied`);
+      }
     }
     if (state.blindRoll) {
-      for (const el of card.querySelectorAll(".roll-result[data-total]")) {
+      const resultEls = card.querySelectorAll(".roll-result[data-total]");
+      for (const el of resultEls) {
         el.textContent = "rolled";
         el.classList.add("placeholder");
       }
+      if (resultEls.length) console.log(`${MODULE_ID} | Blind roll applied to ${resultEls.length} results`);
     }
-    // Hide success/failure indicators if either blind setting is on
     if (state.blindDC || state.blindRoll) {
       for (const el of card.querySelectorAll(".roll-status[data-success]")) {
         el.textContent = "";
         el.classList.remove("success", "failure");
       }
-      // Hide group final result (still show pending text since it's just progress)
       const groupFinal = card.querySelector('.group-summary[data-group="final"]');
       if (groupFinal) {
-        const successCount = Object.keys(state.rolls).length;
         groupFinal.innerHTML = `Group check complete (${state.players.length} rolled) — result hidden`;
         groupFinal.classList.add("muted");
       }
@@ -654,7 +671,10 @@ function onRenderChatMessage(message, html, _data) {
     const mode = btn.dataset.mode;
     const actor = game.actors.get(actorId);
 
-    if (!actor || !actor.isOwner) {
+    const owns = userOwnsActor(actor, game.user);
+    console.log(`${MODULE_ID} | Button for ${actor?.name || actorId}: owns=${owns} (user=${game.user.name})`);
+
+    if (!actor || !owns) {
       btn.disabled = true;
       btn.title = "Not your character";
       continue;
@@ -665,6 +685,29 @@ function onRenderChatMessage(message, html, _data) {
     }
     btn.addEventListener("click", () => onPlayerRollClick(message.id, actorId, mode));
   }
+}
+
+/**
+ * Robust ownership check that works across Foundry versions.
+ * V11/V12 use `actor.ownership[userId]`, V13 same.
+ * GMs always own everything.
+ */
+function userOwnsActor(actor, user) {
+  if (!actor || !user) return false;
+  if (user.isGM) return true;
+  // Use Foundry's built-in test if available
+  try {
+    if (typeof actor.testUserPermission === "function") {
+      const OWNER = CONST?.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3;
+      if (actor.testUserPermission(user, OWNER)) return true;
+    }
+  } catch (e) { /* fall through */ }
+  // Direct check on ownership map (V10+)
+  const ownership = actor.ownership || actor.permission || {};
+  const OWNER = CONST?.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3;
+  const userLevel = ownership[user.id];
+  const defaultLevel = ownership.default ?? 0;
+  return (userLevel ?? defaultLevel) >= OWNER;
 }
 
 async function onPlayerRollClick(messageId, actorId, mode) {
