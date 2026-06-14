@@ -331,12 +331,10 @@ function injectStylesOnce() {
     }
     .skill-check-card .bd-kept { color:#1f1f1f; font-weight:700; font-size:1.05em; }
     .skill-check-card .bd-dropped {
-      color:#8a6f3a;
-      text-decoration:line-through;
-      text-decoration-color:rgba(122,40,40,.55);
-      text-decoration-thickness:1.5px;
-      margin-left:.55em;
-      font-weight:600;
+      color:#9c7a3a;
+      margin-left:.45em;
+      font-weight:500;
+      font-size:.95em;
       opacity:.85;
     }
     .skill-check-card .bd-row.bd-total {
@@ -835,6 +833,11 @@ async function onPlayerRollClick(messageId, actorId, mode) {
     }
   }
 
+  // Play the standard Foundry dice roll sound (broadcast to all clients).
+  // For blind rolls we still play the sound — hearing it doesn't reveal the
+  // result, and players need audio feedback that their click registered.
+  playDiceSound();
+
   const total = roll.total;
   const formulaStr = roll.formula || "";
   const success = total >= state.dc;
@@ -936,6 +939,27 @@ function escapeHtml(s) {
 }
 
 /**
+ * Play Foundry's standard dice-roll sound, broadcast to all clients.
+ * Works across V11/V12 (global AudioHelper) and V13 (foundry.audio.AudioHelper).
+ */
+function playDiceSound() {
+  try {
+    const src = CONFIG?.sounds?.dice || "sounds/dice.wav";
+    const opts = { src, volume: 0.8, autoplay: true, loop: false };
+    const broadcast = true;
+    if (foundry?.audio?.AudioHelper?.play) {
+      foundry.audio.AudioHelper.play(opts, broadcast);
+    } else if (typeof AudioHelper !== "undefined" && AudioHelper.play) {
+      AudioHelper.play(opts, broadcast);
+    } else if (game.audio?.play) {
+      game.audio.play(opts);
+    }
+  } catch (e) {
+    console.warn(`${MODULE_ID} | Couldn't play dice sound:`, e);
+  }
+}
+
+/**
  * Extract roll breakdown (d20 result, bonus dice, modifier) from a Roll instance.
  * Works for both Foundry raw Rolls and dnd5e D20Rolls. The modifier is
  * computed implicitly as (total - sum of all dice) so it's always correct
@@ -994,7 +1018,7 @@ function renderBreakdown(breakdown) {
 
   const modeLabel = mode === "adv" ? " (advantage)" : mode === "dis" ? " (disadvantage)" : "";
   const d20ValueHtml = (d20Dropped !== null && d20Dropped !== undefined)
-    ? `<span class="bd-kept">${d20Result}</span><span class="bd-dropped">${d20Dropped}</span>`
+    ? `<span class="bd-kept">${d20Result}</span><span class="bd-dropped">(${d20Dropped})</span>`
     : `<span class="bd-kept">${d20Result}</span>`;
 
   let html = `
