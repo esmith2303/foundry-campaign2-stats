@@ -4,6 +4,7 @@ import { registerSettings } from "./settings.mjs";
 import { registerSkillCheck, openSkillCheckDialog } from "./SkillCheck.mjs";
 import { registerQuickActions, quickActionsTool, openQuickActions, QUICK_ACTIONS_TOOL } from "./QuickActions.mjs";
 import { registerShop, shopTool, openShopManager, SHOP_TOOL } from "./shop/Shop.mjs";
+import { addWindowControls } from "./windowControls.mjs";
 
 const MODULE_ID = "dnd-group-campaign-2-stats";
 
@@ -157,7 +158,11 @@ Hooks.on("renderSceneControls", () => {
 function showSkillsSheet(anchorBtn) {
   // Toggle: if already open, close it
   const existing = document.getElementById("midi-skills-popover");
-  if (existing) { existing._close?.(); return; }
+  if (existing) {
+    if (existing._qaWin?.minimised) existing._qaWin.restore();
+    else existing._close?.();
+    return;
+  }
 
   const characters = game.actors.contents
     .filter(a => a.hasPlayerOwner && (a.type === "character" || a.type === "npc"))
@@ -375,11 +380,14 @@ function showSkillsSheet(anchorBtn) {
     setTimeout(() => popover.remove(), 200);
   };
   popover._close = close;
+  addWindowControls({ frame: popover, close });
 
+  // A minimised popover stays put while you click around the table
   const onOutside = (e) => {
+    if (popover._qaWin?.minimised) return;
     if (!popover.contains(e.target) && e.target !== anchorBtn && !anchorBtn.contains(e.target)) close();
   };
-  const onKey = (e) => { if (e.key === "Escape") close(); };
+  const onKey = (e) => { if (e.key === "Escape" && !popover._qaWin?.minimised) close(); };
 
   // Defer to avoid catching the click that opened us
   setTimeout(() => {

@@ -177,3 +177,55 @@
 .qa-card .qa-result-chev:empty { border-left: none; }
 .qa-card .qa-result-chev i { transition: transform .15s ease; }
 .qa-card .qa-roll.qa-open .qa-result-chev i { transform: rotate(180deg); }
+
+/* Full-HP targets and warnings */
+:is(#qa-dialog, #qa-shop-dialog) .qa-row-full { opacity: .5; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-row-full label, :is(#qa-dialog, #qa-shop-dialog) .qa-row-full input { cursor: not-allowed; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-warn { margin-top: .45rem; color: #e8c65a; font-size: .85rem; }
+
+/* ── Window controls: − (minimise) and ✕ (close) on every module popup ────── */
+.qa-has-winctl { position: relative; }
+.qa-winctl {
+  position: absolute; top: .95rem; right: .6rem; z-index: 6;
+  display: flex; align-items: center; gap: .25rem;
+}
+#midi-skills-popover .qa-winctl { top: .6rem; right: .5rem; }
+.qa-win-bar-title { display: none; }
+.qa-has-winctl .title { padding-left: 3.4rem; padding-right: 3.4rem; }
+
+/* Popups that re-render (Abilities, Shop) scroll their content, not the frame,
+   so the controls never scroll away or sit on top of fields */
+:is(#qa-dialog, #qa-shop-dialog).qa-has-winctl { display: flex; flex-direction: column; overflow: hidden; }
+.qa-win-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.qa-win-body > .title { position: sticky; top: 0; z-index: 5; background: #0a0a0f; }
+
+:is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, #midi-skills-popover) .qa-winctl .qa-win-btn {
+  flex: none; width: 1.4rem; min-width: 0; height: 1.4rem; margin: 0; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #12121a; color: #8a6d2b;
+  border: 1px solid #2a2a3a !important; border-radius: 3px;
+  font: 600 .8rem/1 'JetBrains Mono', monospace; letter-spacing: 0;
+  cursor: pointer; transition: color .12s, border-color .12s, background .12s;
+}
+:is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, #midi-skills-popover) .qa-winctl .qa-win-btn:hover {
+  background: #1a1a28; color: #e8c65a; border-color: #8a6d2b !important;
+}
+:is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, #midi-skills-popover) .qa-winctl .qa-win-close:hover {
+  color: #e07070; border-color: #c44e4e !important;
+}
+
+/* Minimised: just a small bar — title, −, ✕ — that can be dragged */
+:is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, #midi-skills-popover).qa-minimised {
+  display: block !important; width: auto !important; min-width: 0 !important; max-width: 340px !important;
+  height: auto !important; max-height: none !important; overflow: hidden !important;
+  padding: .3rem .35rem .3rem .7rem !important;
+}
+.qa-minimised > :not(.qa-winctl) { display: none !important; }
+.qa-minimised > .qa-winctl { position: static; gap: .3rem; }
+.qa-minimised .qa-win-bar-title {
+  display: block; flex: 1; min-width: 0; max-width: 260px; padding-right: .4rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: 'Cinzel', serif; font-weight: 600; font-size: .78rem;
+  letter-spacing: .1em; text-transform: uppercase; color: #c9a84c;
+  cursor: move; user-select: none;
+}

@@ -17,6 +17,7 @@ import { MODULE_ID, escapeHtml } from "../abilities/shared.mjs";
 import { registerGmAction, runAsGM, castersForUser } from "../QuickActions.mjs";
 import { COIN_CP, DENOMS, toCp, walletCp, formatCp, pay } from "./currency.mjs";
 import { detailsHtml, bindDetails, applyDetails, validateItem } from "./itemDetails.mjs";
+import { addWindowControls } from "../windowControls.mjs";
 
 const SOCKET = `module.${MODULE_ID}`;
 export const SHOP_TOOL = "stats-shop";
@@ -106,14 +107,20 @@ function openShell({ floating }) {
   const overlay = document.createElement("div");
   overlay.id = "qa-shop-overlay";
   if (floating) overlay.classList.add("qa-floating");
+  const frame = document.createElement("div");
+  frame.id = "qa-shop-dialog";
+  // Screens render into `dialog`; the − / ✕ controls live beside it in the frame
   const dialog = document.createElement("div");
-  dialog.id = "qa-shop-dialog";
-  overlay.appendChild(dialog);
+  dialog.className = "qa-win-body";
+  frame.appendChild(dialog);
+  overlay.appendChild(frame);
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.classList.add("shown"));
 
   const onClose = [];   // cleanup to run when the panel closes (e.g. the compendium window)
-  const onKey = (e) => { if (e.key === "Escape" && !e.target.closest?.("input, select, textarea")) close(); };
+  const onKey = (e) => {
+    if (e.key === "Escape" && !frame._qaWin?.minimised && !e.target.closest?.("input, select, textarea")) close();
+  };
   function close() {
     onClose.splice(0).forEach(f => { try { f(); } catch {} });
     document.removeEventListener("keydown", onKey);
@@ -127,15 +134,15 @@ function openShell({ floating }) {
     // Set in code so no stylesheet can bring the dark backdrop back: the
     // overlay is see-through and click-through; only the panel catches clicks.
     Object.assign(overlay.style, { background: "transparent", pointerEvents: "none" });
-    Object.assign(dialog.style, { pointerEvents: "auto", position: "fixed", left: "110px", top: "70px" });
-    dialog.addEventListener("mousedown", (e) => {
+    Object.assign(frame.style, { pointerEvents: "auto", position: "fixed", left: "110px", top: "70px" });
+    frame.addEventListener("mousedown", (e) => {
       const handle = e.target.closest(".qa-drag-handle");
       if (!handle) return;
-      const r = dialog.getBoundingClientRect();
+      const r = frame.getBoundingClientRect();
       const dx = e.clientX - r.left, dy = e.clientY - r.top;
       const move = (ev) => {
-        dialog.style.left = `${Math.max(0, Math.min(window.innerWidth - 80, ev.clientX - dx))}px`;
-        dialog.style.top = `${Math.max(0, Math.min(window.innerHeight - 40, ev.clientY - dy))}px`;
+        frame.style.left = `${Math.max(0, Math.min(window.innerWidth - 80, ev.clientX - dx))}px`;
+        frame.style.top = `${Math.max(0, Math.min(window.innerHeight - 40, ev.clientY - dy))}px`;
       };
       const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); };
       document.addEventListener("mousemove", move);
@@ -143,6 +150,7 @@ function openShell({ floating }) {
       e.preventDefault();
     });
   }
+  addWindowControls({ frame, overlay, close });
   return { overlay, dialog, close, onClose };
 }
 
@@ -179,6 +187,9 @@ async function openPackBeside(pack, dialog) {
 
 export function openShopManager() {
   if (!game.user.isGM) return;
+  // Clicking the store button again brings a minimised shop panel back
+  const open = document.querySelector("#qa-shop-overlay.qa-floating #qa-shop-dialog");
+  if (open?._qaWin?.minimised) return open._qaWin.restore();
   const { dialog, close, onClose } = openShell({ floating: true });
   let packApp = null;   // the compendium window we opened, closed with the panel
   onClose.push(() => packApp?.close?.());

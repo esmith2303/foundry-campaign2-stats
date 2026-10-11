@@ -51,6 +51,7 @@ async function gmApply({ actorId, featId, kitId, plan, reroll = true } = {}, use
     const t = game.actors.get(p.actorId);
     if (!t) throw new Error("A selected character no longer exists.");
     if (hitDiceLeft(t) < p.count) throw new Error(`${t.name} only has ${hitDiceLeft(t)} hit dice left.`);
+    if (hpOf(t).missing <= 0) throw new Error(`${t.name} is already at full HP.`);
     return { target: t, count: p.count };
   });
 
@@ -112,12 +113,13 @@ function renderPanel(dialog, { actor, item, close, back, runAsGM }) {
 
   const row = (a) => {
     const hp = hpOf(a);
-    const hdLeft = hitDiceLeft(a);
+    const full = hp.missing <= 0;
+    const hdLeft = full ? 0 : hitDiceLeft(a);
     return `
-      <div class="player-row qa-target" data-actor-id="${a.id}" data-limit="${hdLeft}">
+      <div class="player-row qa-target${full ? " qa-is-full" : ""}" data-actor-id="${a.id}" data-limit="${hdLeft}" title="${full ? "Already at full HP" : ""}">
         <label>
           <span>${escapeHtml(a.name)}${a === actor ? ' <span class="qa-dim">(self)</span>' : ""}</span>
-          <span class="qa-hp">${hp.value}/${hp.max} · HD ${hitDiceLabel(a)}</span>
+          <span class="qa-hp">${hp.value}/${hp.max}${full ? " · full HP" : ` · HD ${hitDiceLabel(a)}`}</span>
         </label>
         <div class="num-input">
           <button type="button" data-step="-1">−</button>

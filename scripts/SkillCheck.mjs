@@ -1,3 +1,4 @@
+import { addWindowControls } from "./windowControls.mjs";
 // SkillCheck.mjs — GM tool: pick a skill in the popover → opens a check-config
 // dialog → posts a chat card with per-player dice buttons → players click to roll
 // → results stream back, with blind DC / blind roll / group check rules respected.
@@ -529,9 +530,11 @@ function buildDialog(skillKey, skillLabel, ability, characters) {
   });
 
   const close = () => {
+    document.removeEventListener("keydown", onKey);
     overlay.classList.remove("shown");
     setTimeout(() => overlay.remove(), 200);
   };
+  addWindowControls({ frame: dialog, overlay, close });
   dialog.querySelector("#sc-cancel").addEventListener("click", close);
 
   dialog.querySelector("#sc-submit").addEventListener("click", async () => {
@@ -569,9 +572,9 @@ function buildDialog(skillKey, skillLabel, ability, characters) {
   overlay.addEventListener("mousedown", (e) => {
     if (e.target === overlay) close();
   });
-  const onKey = (e) => {
-    if (e.key === "Escape") { close(); document.removeEventListener("keydown", onKey); }
-  };
+  function onKey(e) {
+    if (e.key === "Escape" && !dialog._qaWin?.minimised) close();
+  }
   document.addEventListener("keydown", onKey);
 }
 

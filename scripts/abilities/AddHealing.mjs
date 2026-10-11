@@ -19,6 +19,7 @@ async function gmApply({ actorId, targetId, amount, roll } = {}, user) {
     const target = game.actors.get(targetId);
     if (!target) throw new Error("That character no longer exists.");
     const hp = hpOf(target);
+    if (hp.missing <= 0) throw new Error(`${target.name} is already at full HP.`);
     const applied = Math.min(total, hp.missing);
     if (applied > 0) await target.update({ "system.attributes.hp.value": hp.value + applied });
     row = { actorId: target.id, name: target.name, requested: total, applied, hpAfter: hp.value + applied, hpMax: hp.max };
@@ -44,28 +45,30 @@ async function gmApply({ actorId, targetId, amount, roll } = {}, user) {
 
 function renderPanel(dialog, { actor, close, back, runAsGM }) {
   const party = partyCharacters();
+  const firstHurt = party.find(a => hpOf(a).missing > 0);
   dialog.innerHTML = `
     <div class="title">Add Healing</div>
     <div class="field">
       <div class="field-label">Heal — by ${escapeHtml(actor.name)}</div>
       <div class="players">
-        ${party.map((a, i) => { const hp = hpOf(a); return `
-          <div class="player-row">
+        ${party.map(a => { const hp = hpOf(a); const full = hp.missing <= 0; return `
+          <div class="player-row${full ? " qa-row-full" : ""}" title="${full ? "Already at full HP" : ""}">
             <label>
-              <input type="radio" name="qa-heal-target" value="${a.id}"${i === 0 ? " checked" : ""}>
+              <input type="radio" name="qa-heal-target" value="${a.id}" data-missing="${hp.missing}"${a === firstHurt ? " checked" : ""}${full ? " disabled" : ""}>
               <span>${escapeHtml(a.name)}</span>
             </label>
-            <span class="qa-hp">${hp.value}/${hp.max}${hp.missing ? "" : " full"}</span>
+            <span class="qa-hp">${hp.value}/${hp.max}${full ? " · full HP" : ` · −${hp.missing}`}</span>
           </div>`; }).join("")}
         <div class="player-row">
           <label>
-            <input type="radio" name="qa-heal-target" value=""${party.length ? "" : " checked"}>
+            <input type="radio" name="qa-heal-target" value="" data-missing=""${party.length ? "" : " checked"}>
             <span>None <span class="qa-dim">— stats only, no character is healed</span></span>
           </label>
         </div>
       </div>
     </div>
     <div class="qa-amount"></div>
+    <div class="qa-warn" hidden></div>
     <div class="qa-error" hidden></div>
     <div class="actions">
       <button type="button" class="btn" data-qa="back">Back</button>
@@ -75,8 +78,23 @@ function renderPanel(dialog, { actor, close, back, runAsGM }) {
   const picker = mountAmountPicker(dialog.querySelector(".qa-amount"), { label: "Healing" });
   const go = dialog.querySelector('[data-qa="go"]');
   const err = dialog.querySelector(".qa-error");
-  const refresh = () => { go.disabled = !picker.isReady(); };
+  const warn = dialog.querySelector(".qa-warn");
+  const chosen = () => dialog.querySelector('input[name="qa-heal-target"]:checked');
+  const refresh = () => {
+    const pick = chosen();
+    let message = "";
+    if (!pick) message = "Everyone is already at full HP — choose None to record the healing for stats only.";
+    else if (pick.value && picker.mode() === "set") {
+      const missing = Number(pick.dataset.missing) || 0, amount = picker.setAmount() || 0;
+      if (amount > missing) message = `Only ${missing} HP missing — healing will stop at full HP (+${missing}).`;
+    }
+    warn.hidden = !message;
+    warn.textContent = message;
+    go.disabled = !pick || !picker.isReady();
+  };
   picker.onChange(refresh);
+  dialog.querySelectorAll('input[name="qa-heal-target"]').forEach(r => r.addEventListener("change", refresh));
+  refresh();
 
   dialog.querySelector('[data-qa="back"]').addEventListener("click", back);
   go.addEventListener("click", async () => {

@@ -17,6 +17,7 @@ import { AddHealing } from "./abilities/AddHealing.mjs";
 import { Healer } from "./abilities/Healer.mjs";
 import { LayOnHands } from "./abilities/LayOnHands.mjs";
 import { MODULE_ID, escapeHtml, partyCharacters } from "./abilities/shared.mjs";
+import { addWindowControls } from "./windowControls.mjs";
 
 const SOCKET = `module.${MODULE_ID}`;
 export const QUICK_ACTIONS_TOOL = "stats-quick-actions";
@@ -142,16 +143,23 @@ export function openQuickActions() {
 
   // Same overlay/dialog structure as the skill-check dialog; its stylesheet
   // (SkillCheck.mjs) styles #qa-overlay / #qa-dialog too, so they match.
+  // Clicking + again brings a minimised popup back instead of starting over
+  const open = document.getElementById("qa-dialog");
+  if (open?._qaWin?.minimised) return open._qaWin.restore();
   document.getElementById("qa-overlay")?.remove();
   const overlay = document.createElement("div");
   overlay.id = "qa-overlay";
+  const frame = document.createElement("div");
+  frame.id = "qa-dialog";
+  // Every screen renders into `dialog`; the − / ✕ controls live beside it in the frame
   const dialog = document.createElement("div");
-  dialog.id = "qa-dialog";
-  overlay.appendChild(dialog);
+  dialog.className = "qa-win-body";
+  frame.appendChild(dialog);
+  overlay.appendChild(frame);
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.classList.add("shown"));
 
-  const onKey = (e) => { if (e.key === "Escape") close(); };
+  const onKey = (e) => { if (e.key === "Escape" && !frame._qaWin?.minimised) close(); };
   function close() {
     document.removeEventListener("keydown", onKey);
     overlay.classList.remove("shown");
@@ -159,6 +167,7 @@ export function openQuickActions() {
   }
   document.addEventListener("keydown", onKey);
   overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
+  addWindowControls({ frame, overlay, close });
 
   // Start on the first character that actually has a supported ability
   let caster = casters.find(c => ABILITIES.some(ab => ab.findItem(c))) ?? casters[0];
