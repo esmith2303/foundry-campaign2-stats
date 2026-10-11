@@ -60,7 +60,7 @@ export function shopLabel(shop) {
 // ── Setup ────────────────────────────────────────────────────────────────────
 
 export function registerShop() {
-  registerGmAction(BUY, gmBuy);
+  registerGmAction(BUY, gmBuyInTurn);
   game.socket.on(SOCKET, (data) => {
     if (data?.action === "shop.visit") openVisit(data.shop);
     else if (data?.action === "shop.stock") applyStock(data.shopId, data.stock);
@@ -642,6 +642,19 @@ function openVisit(shop) {
 }
 
 // ── GM: purchase ─────────────────────────────────────────────────────────────
+
+/**
+ * Purchases are handled one at a time, in the order they arrive. Each one
+ * reads the shop's stock and the buyer's purse only after the previous one has
+ * finished saving, so two players can't both get the last item, and a double
+ * click can't be charged once for two lots.
+ */
+let buyQueue = Promise.resolve();
+function gmBuyInTurn(payload, user) {
+  const turn = buyQueue.then(() => gmBuy(payload, user));
+  buyQueue = turn.catch(() => {});   // a refused purchase doesn't hold up the next
+  return turn;
+}
 
 async function gmBuy({ shopId, actorId, lines } = {}, user) {
   const shops = allShops();

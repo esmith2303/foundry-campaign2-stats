@@ -94,7 +94,9 @@ The GM gets a **store** button in the token controls (players don't).
   price. The GM's client checks stock and money, takes the coins (giving
   change), adds the items (stacking consumables/loot), reduces stock for
   everyone, and posts a receipt card; changed prices are flagged in red.
-  The GM must be logged in for purchases to go through.
+  The GM must be logged in for purchases to go through. Purchases are handled
+  one at a time on the GM's client, so two players can't both buy the last
+  item and a double click can't be charged once for two lots.
 
 Every receipt is also a stat: who bought what, from which shop, how many and
 at what price (each line of the receipt). They're uploaded with the chat log

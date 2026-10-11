@@ -88,9 +88,15 @@ function isPrimaryGM() {
 export async function runAsGM(action, payload) {
   const handler = GM_HANDLERS[action];
   if (!handler) throw new Error(`Unknown action "${action}".`);
-  if (game.user.isGM) return handler(payload, game.user);
+  // Only one client — the active GM's — makes changes, so actions that must
+  // happen one at a time (shop purchases) can be queued there. A second GM's
+  // requests go through it too.
+  if (isPrimaryGM()) return handler(payload, game.user);
 
-  if (!activeGM()) throw new Error("The GM needs to be logged in to apply this.");
+  if (!activeGM()) {
+    if (game.user.isGM) return handler(payload, game.user);
+    throw new Error("The GM needs to be logged in to apply this.");
+  }
   const requestId = foundry.utils.randomID();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
