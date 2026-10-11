@@ -38,7 +38,8 @@ export function openSkillCheckDialog(skillKey) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// One-time CSS injection (works around Foundry stripping chat <style>)
+// One-time CSS injection (works around Foundry stripping chat <style>).
+// Also styles the Quick Actions popup (#qa-dialog) so all module popups match.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function injectStylesOnce() {
@@ -49,13 +50,13 @@ function injectStylesOnce() {
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Crimson+Text:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
     /* ─── DIALOG ───────────────────────────────────────────────────────── */
-    #skill-check-overlay {
+    :is(#skill-check-overlay, #qa-overlay) {
       position:fixed; inset:0; background:rgba(0,0,0,.55);
       z-index:99999; display:flex; align-items:center; justify-content:center;
       opacity:0; transition:opacity .15s ease;
     }
-    #skill-check-overlay.shown { opacity:1; }
-    #skill-check-dialog {
+    :is(#skill-check-overlay, #qa-overlay).shown { opacity:1; }
+    :is(#skill-check-dialog, #qa-dialog) {
       --bg:#0a0a0f;--bg2:#12121a;--bg3:#1a1a28;--bg4:#22223a;
       --gold:#c9a84c;--gold-dim:#8a6d2b;--gold-bright:#e8c65a;
       --text:#d4d0c8;--text-dim:#7a7770;--text-bright:#f0ece4;
@@ -70,7 +71,7 @@ function injectStylesOnce() {
       min-width:380px; max-width:520px; max-height:90vh;
       overflow:auto;
     }
-    #skill-check-dialog .title {
+    :is(#skill-check-dialog, #qa-dialog) .title {
       font-family:'Cinzel',serif; font-weight:600;
       font-size:1rem; color:#c9a84c;
       letter-spacing:.12em; text-transform:uppercase;
@@ -78,41 +79,41 @@ function injectStylesOnce() {
       margin:0 0 .8rem 0; padding-bottom:.6rem;
       border-bottom:1px solid #8a6d2b;
     }
-    #skill-check-dialog .field { margin:.55rem 0; }
-    #skill-check-dialog .field-label {
+    :is(#skill-check-dialog, #qa-dialog) .field { margin:.55rem 0; }
+    :is(#skill-check-dialog, #qa-dialog) .field-label {
       font-family:'Cinzel',serif; font-size:.65rem;
       letter-spacing:.1em; text-transform:uppercase;
       color:#c9a84c; margin-bottom:.25rem;
     }
 
     /* Aggressive button reset to defeat any Foundry/dnd5e :hover/:focus borders */
-    #skill-check-dialog button {
+    :is(#skill-check-dialog, #qa-dialog) button {
       border:1px solid transparent !important;
       outline:none !important;
       box-shadow:none !important;
       background-image:none !important;
       text-shadow:none !important;
     }
-    #skill-check-dialog button:focus,
-    #skill-check-dialog button:hover,
-    #skill-check-dialog button:active,
-    #skill-check-dialog button:focus-visible {
+    :is(#skill-check-dialog, #qa-dialog) button:focus,
+    :is(#skill-check-dialog, #qa-dialog) button:hover,
+    :is(#skill-check-dialog, #qa-dialog) button:active,
+    :is(#skill-check-dialog, #qa-dialog) button:focus-visible {
       border:1px solid transparent !important;
       outline:none !important;
       box-shadow:none !important;
     }
-    #skill-check-dialog input[type=number] {
+    :is(#skill-check-dialog, #qa-dialog) input[type=number] {
       outline:none !important; box-shadow:none !important;
       background:transparent !important;
       border:none !important;
     }
 
-    #skill-check-dialog .num-input {
+    :is(#skill-check-dialog, #qa-dialog) .num-input {
       display:inline-flex; align-items:center;
       background:#12121a; border:1px solid #2a2a3a !important;
       border-radius:3px; overflow:hidden;
     }
-    #skill-check-dialog .num-input button {
+    :is(#skill-check-dialog, #qa-dialog) .num-input button {
       background:#1a1a28 !important; color:#c9a84c !important;
       width:1.9rem; height:1.9rem;
       font-family:'JetBrains Mono',monospace; font-weight:700;
@@ -122,21 +123,21 @@ function injectStylesOnce() {
       line-height:1;
       display:inline-flex; align-items:center; justify-content:center;
     }
-    #skill-check-dialog .num-input button:hover {
+    :is(#skill-check-dialog, #qa-dialog) .num-input button:hover {
       background:#22223a !important; color:#e8c65a !important;
     }
-    #skill-check-dialog .num-input input {
+    :is(#skill-check-dialog, #qa-dialog) .num-input input {
       color:#f0ece4 !important;
       width:3.5rem; text-align:center;
       font-family:'JetBrains Mono',monospace; font-weight:600; font-size:.9rem;
       padding:0;
     }
-    #skill-check-dialog .num-input input::-webkit-outer-spin-button,
-    #skill-check-dialog .num-input input::-webkit-inner-spin-button {
+    :is(#skill-check-dialog, #qa-dialog) .num-input input::-webkit-outer-spin-button,
+    :is(#skill-check-dialog, #qa-dialog) .num-input input::-webkit-inner-spin-button {
       -webkit-appearance:none; margin:0;
     }
-    #skill-check-dialog .players { margin:.5rem 0; }
-    #skill-check-dialog .player-row {
+    :is(#skill-check-dialog, #qa-dialog) .players { margin:.5rem 0; }
+    :is(#skill-check-dialog, #qa-dialog) .player-row {
       display:flex; align-items:center; gap:.5rem;
       padding:.35rem .45rem;
       margin:.2rem 0;
@@ -144,20 +145,20 @@ function injectStylesOnce() {
       border:1px solid #2a2a3a;
       border-radius:3px;
     }
-    #skill-check-dialog .player-row label {
+    :is(#skill-check-dialog, #qa-dialog) .player-row label {
       flex:1; display:flex; align-items:center; gap:.5rem;
       cursor:pointer; color:#f0ece4;
       font-size:.85rem;
     }
-    #skill-check-dialog input[type=checkbox] {
+    :is(#skill-check-dialog, #qa-dialog) input[type=checkbox] {
       accent-color:#c9a84c;
       width:.95rem; height:.95rem;
       cursor:pointer;
     }
-    #skill-check-dialog .mode-toggle {
+    :is(#skill-check-dialog, #qa-dialog) .mode-toggle {
       display:inline-flex; border:1px solid #2a2a3a; border-radius:3px; overflow:hidden;
     }
-    #skill-check-dialog .mode-toggle button {
+    :is(#skill-check-dialog, #qa-dialog) .mode-toggle button {
       background:#1a1a28 !important; color:#7a7770 !important;
       padding:.25rem .55rem;
       font-family:'JetBrains Mono',monospace; font-size:.65rem;
@@ -165,47 +166,47 @@ function injectStylesOnce() {
       transition:background .1s, color .1s;
       text-transform:uppercase;
     }
-    #skill-check-dialog .mode-toggle button.active {
+    :is(#skill-check-dialog, #qa-dialog) .mode-toggle button.active {
       background:#8a6d2b !important; color:#0a0a0f !important;
       font-weight:700;
     }
-    #skill-check-dialog .mode-toggle button:hover:not(.active) {
+    :is(#skill-check-dialog, #qa-dialog) .mode-toggle button:hover:not(.active) {
       background:#22223a !important; color:#c9a84c !important;
     }
-    #skill-check-dialog .checkbox-row {
+    :is(#skill-check-dialog, #qa-dialog) .checkbox-row {
       display:flex; gap:1.2rem; margin:.6rem 0 .2rem 0;
       padding:.45rem .5rem;
       background:#12121a; border:1px solid #2a2a3a; border-radius:3px;
     }
-    #skill-check-dialog .checkbox-row label,
-    #skill-check-dialog .group-row label {
+    :is(#skill-check-dialog, #qa-dialog) .checkbox-row label,
+    :is(#skill-check-dialog, #qa-dialog) .group-row label {
       display:flex; align-items:center; gap:.45rem;
       font-size:.8rem; color:#f0ece4;
       cursor:pointer;
     }
-    #skill-check-dialog .group-row {
+    :is(#skill-check-dialog, #qa-dialog) .group-row {
       display:flex; align-items:center; gap:.7rem;
       padding:.45rem .5rem;
       background:#12121a; border:1px solid #2a2a3a; border-radius:3px;
       margin:.4rem 0;
     }
-    #skill-check-dialog .group-threshold {
+    :is(#skill-check-dialog, #qa-dialog) .group-threshold {
       display:flex; align-items:center; gap:.5rem;
       margin-left:auto;
       opacity:.4; pointer-events:none;
       transition:opacity .15s;
     }
-    #skill-check-dialog .group-threshold.enabled { opacity:1; pointer-events:auto; }
-    #skill-check-dialog .group-threshold-label {
+    :is(#skill-check-dialog, #qa-dialog) .group-threshold.enabled { opacity:1; pointer-events:auto; }
+    :is(#skill-check-dialog, #qa-dialog) .group-threshold-label {
       font-size:.7rem; color:#7a7770;
       font-family:'JetBrains Mono',monospace; letter-spacing:.05em;
     }
-    #skill-check-dialog .actions {
+    :is(#skill-check-dialog, #qa-dialog) .actions {
       display:flex; gap:.5rem; justify-content:flex-end;
       margin-top:.9rem; padding-top:.6rem;
       border-top:1px solid #2a2a3a;
     }
-    #skill-check-dialog .btn {
+    :is(#skill-check-dialog, #qa-dialog) .btn {
       padding:.4rem 1rem;
       font-family:'Cinzel',serif; font-size:.7rem;
       letter-spacing:.1em; text-transform:uppercase;
@@ -214,15 +215,15 @@ function injectStylesOnce() {
       cursor:pointer;
       transition:background .1s, color .1s, border-color .1s;
     }
-    #skill-check-dialog .btn:hover {
+    :is(#skill-check-dialog, #qa-dialog) .btn:hover {
       background:#22223a !important; color:#c9a84c !important;
     }
-    #skill-check-dialog .btn.primary {
+    :is(#skill-check-dialog, #qa-dialog) .btn.primary {
       background:#8a6d2b !important; color:#0a0a0f !important;
       border-color:#c9a84c !important;
       font-weight:700;
     }
-    #skill-check-dialog .btn.primary:hover {
+    :is(#skill-check-dialog, #qa-dialog) .btn.primary:hover {
       background:#c9a84c !important; color:#0a0a0f !important;
     }
 

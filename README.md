@@ -29,9 +29,22 @@ Foundry (GM clicks ☁↑ Upload)
 | Saves | Each target's `saved` result on any card (e.g. a monster's spell), Monk's TokenBar requests with a DC, standalone save rolls with a DC |
 | Checks | Skill-check cards, Monk's TokenBar requests with a DC, standalone checks with a DC |
 | Death saves | Death save rolls (≥10 or a natural 20) |
-| Heals | PC uses of a healing activity |
+| Heals | PC uses of a healing activity, plus Quick Action heals (e.g. Lay on Hands, with the amount healed) |
 
 Only player characters are tracked.
+
+## Abilities ("+" toolbar button)
+
+Every player gets a **+** button in the token controls. It lists the supported
+abilities found on their character's sheet and runs them for them. Changes to
+other characters are applied by the GM's client (the GM must be logged in).
+
+| Ability | What it does |
+|---------|--------------|
+| Lay on Hands | Any character with a "Lay on Hands" feature that has a uses pool. Split the pool across party members and/or "Other"; heals the PCs (never past max HP, and only what's actually healed is spent), spends the pool, and posts a chat card. Counted as a heal on the dashboard, and the amount is added to the character's total healing. |
+
+To add one: create `scripts/abilities/<Name>.mjs` (see `LayOnHands.mjs`) and
+add it to `ABILITIES` in `scripts/QuickActions.mjs`.
 
 ## Backfilling / correcting from a chat export
 

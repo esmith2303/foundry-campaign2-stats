@@ -95,6 +95,7 @@ export function extractMessage(message, ctx) {
   const midi = flags["midi-qol"] || {};
   const monks = flags["monks-tokenbar"] || {};
   const skillCheck = flags[MODULE_ID]?.skillCheck;
+  const abilityUse = flags[MODULE_ID]?.abilityUse;
   const speakerId = message.speaker?.actor || null;
 
   const tracked = (actorId) => !!actorId && (ctx.includeNpcs || ctx.isPlayerCharacter(actorId));
@@ -111,11 +112,12 @@ export function extractMessage(message, ctx) {
   };
 
   const outcomes = [];
-  const addOutcome = (actorId, type, success, source, fallbackName) => {
+  const addOutcome = (actorId, type, success, source, fallbackName, amount = null) => {
     if (!tracked(actorId) || !type || typeof success !== "boolean") return;
     outcomes.push({
       actorId, actorName: nameOf(actorId, fallbackName), type, success,
       key: `${messageId}:${actorId}:${type}:${source}`,
+      amount: Number.isFinite(amount) ? amount : null,
     });
   };
 
@@ -189,6 +191,12 @@ export function extractMessage(message, ctx) {
     addOutcome(e.actorid, type, e.passed, "monks", e.realname || e.name);
   }
 
+  // ── Our Quick Actions cards (e.g. Lay on Hands) ───────────────────────────
+  // One heal per use; the amount is added to the character's total healing.
+  if (abilityUse?.actorId && Number(abilityUse.healing) > 0) {
+    addOutcome(abilityUse.actorId, "heal", true, "ability", message.speaker?.alias, Number(abilityUse.healing));
+  }
+
   // ── Our skill-check cards ──────────────────────────────────────────────────
   if (skillCheck) {
     for (const [actorId, r] of Object.entries(skillCheck.rolls || {})) {
@@ -233,11 +241,12 @@ export function extractAll(messages, ctx) {
 /** Per-actor totals, for logging / dry runs. */
 export function summarise(results) {
   const by = {};
-  const get = (id, name) => (by[id] ??= { name, dice: 0, d20: 0, outcomes: {} });
+  const get = (id, name) => (by[id] ??= { name, dice: 0, d20: 0, outcomes: {}, healing: 0 });
   for (const r of results) {
     for (const d of r.dice) { const a = get(d.actorId, d.actorName); a.dice += d.count; if (d.dieType === 20) a.d20 += d.count; }
     for (const o of r.outcomes) {
       const a = get(o.actorId, o.actorName);
+      if (o.type === "heal" && o.amount) a.healing += o.amount;
       const c = (a.outcomes[o.type] ??= { success: 0, failure: 0 });
       c[o.success ? "success" : "failure"]++;
     }
@@ -267,7 +276,7 @@ export async function uploadEvents({ url, apiKey, worldId, worldName, results, c
       worldId, worldName,
       messages: chunk.map(r => ({ id: r.messageId, ts: r.timestamp })),
       dice: chunk.flatMap(r => r.dice.map(d => ({ m: r.messageId, a: d.actorId, n: d.actorName, d: d.dieType, f: d.face, c: d.count }))),
-      outcomes: chunk.flatMap(r => r.outcomes.map(o => ({ m: r.messageId, a: o.actorId, n: o.actorName, t: o.type, s: o.success, k: o.key }))),
+      outcomes: chunk.flatMap(r => r.outcomes.map(o => ({ m: r.messageId, a: o.actorId, n: o.actorName, t: o.type, s: o.success, k: o.key, v: o.amount ?? null }))),
     };
     const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
     if (!res.ok) {

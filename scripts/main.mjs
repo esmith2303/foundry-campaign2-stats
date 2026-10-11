@@ -2,6 +2,7 @@ import { StatsCollector } from "./StatsCollector.mjs";
 import { StatsUploader } from "./StatsUploader.mjs";
 import { registerSettings } from "./settings.mjs";
 import { registerSkillCheck, openSkillCheckDialog } from "./SkillCheck.mjs";
+import { registerQuickActions, quickActionsTool, openQuickActions, QUICK_ACTIONS_TOOL } from "./QuickActions.mjs";
 
 const MODULE_ID = "dnd-group-campaign-2-stats";
 
@@ -24,6 +25,7 @@ Hooks.once("ready", async () => {
   game.modules.get(MODULE_ID).collector = new StatsCollector(MODULE_ID);
   game.modules.get(MODULE_ID).uploader = new StatsUploader(MODULE_ID);
   registerSkillCheck();
+  registerQuickActions();
 
   // Clear the old live-tracking store; nothing reads it any more
   if (game.user.isGM) {
@@ -38,9 +40,13 @@ Hooks.once("ready", async () => {
 // ── Toolbar button ───────────────────────────────────────────────────────────
 
 Hooks.on("getSceneControlButtons", (controls) => {
-  if (!game.user.isGM) return;
   const tokenControls = controls["tokens"];
   if (!tokenControls) return;
+
+  // "+" Abilities button — every user
+  tokenControls.tools[QUICK_ACTIONS_TOOL] = quickActionsTool();
+
+  if (!game.user.isGM) return;
   tokenControls.tools["midi-qol-upload"] = {
     name: "midi-qol-upload",
     title: "Upload Midi-QOL Stats",
@@ -58,6 +64,17 @@ Hooks.on("getSceneControlButtons", (controls) => {
 });
 
 Hooks.on("renderSceneControls", () => {
+  // "+" Abilities button — every user
+  const qaBtn = document.querySelector(`[data-tool="${QUICK_ACTIONS_TOOL}"]`);
+  if (qaBtn) {
+    const newQaBtn = qaBtn.cloneNode(true);
+    qaBtn.parentNode.replaceChild(newQaBtn, qaBtn);
+    newQaBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openQuickActions();
+    });
+  }
+
   if (!game.user.isGM) return;
   const btn = document.querySelector('[data-tool="midi-qol-upload"]');
   if (!btn) return;

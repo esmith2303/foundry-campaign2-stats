@@ -138,11 +138,15 @@ async function migrateUp() {
       t.string("outcome_type", 30).notNullable(); // attack, save, check, death, heal
       t.boolean("success").notNullable();
       t.string("event_key", 200).notNullable();
+      t.integer("amount").nullable();             // e.g. HP healed by a Quick Action
       t.unique(["world_id", "event_key"]);
       t.index(["world_id", "message_id"]);
       t.index(["occurred_at"]);
     });
     console.log("Created table chat_outcomes");
+  } else if (!(await db.schema.hasColumn("chat_outcomes", "amount"))) {
+    await db.schema.alterTable("chat_outcomes", (t) => { t.integer("amount").nullable(); });
+    console.log("Added amount column to chat_outcomes");
   }
 }
 
@@ -253,8 +257,9 @@ app.post("/api/chat-events", authMiddleware, async (req, res) => {
     const at = tsById.get(String(o.m));
     if (!at || !o.a || !o.t || typeof o.s !== "boolean" || !o.k || seenKeys.has(o.k)) continue;
     seenKeys.add(o.k);
+    const amount = o.v === null || o.v === undefined || !Number.isFinite(Number(o.v)) ? null : Math.round(Number(o.v));
     outcomeRows.push({ world_id: worldId, message_id: String(o.m), occurred_at: at, actor_id: String(o.a),
-                       actor_name: o.n ?? null, outcome_type: String(o.t), success: o.s, event_key: String(o.k).slice(0, 200) });
+                       actor_name: o.n ?? null, outcome_type: String(o.t), success: o.s, event_key: String(o.k).slice(0, 200), amount });
   }
 
   try {
@@ -395,7 +400,20 @@ app.get("/api/summary", authMiddleware, async (req, res) => {
       db.raw("COUNT(*) as sessions_played")
     ).where("uploaded_at", ts).groupBy("actor_name").orderBy("total_damage", "desc");
     q = applyExcludes(q, req.query.exclude, excludeWorlds);
-    res.json(await q);
+    const rows = await q;
+
+    // Healing from Quick Actions (e.g. Lay on Hands) never goes through midi-qol,
+    // so add it from the chat log for the same session (or all time).
+    let hq = db("chat_outcomes").select("actor_name").sum("amount as healing")
+      .where("outcome_type", "heal").whereNotNull("amount").groupBy("actor_name");
+    hq = applyRange(hq, await sessionRange(session));
+    hq = applyExcludes(hq, req.query.exclude, excludeWorlds);
+    const extra = new Map((await hq).map(r => [r.actor_name, Number(r.healing) || 0]));
+    for (const r of rows) {
+      const add = extra.get(r.actor_name);
+      if (add) r.total_healing = (Number(r.total_healing) || 0) + add;
+    }
+    res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -515,4 +533,4 @@ app.get("/api/dice-types", authMiddleware, async (req, res) => {
     console.error("Startup error:", err.message);
     process.exit(1);
   }
-})();
+})();
