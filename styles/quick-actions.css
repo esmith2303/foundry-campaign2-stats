@@ -237,3 +237,9 @@
 #qa-dialog .qa-other-sub label span:first-child { color: #d4d0c8; }
 #qa-dialog .qa-other-summary { color: #c9a84c; font-style: normal; font-family: 'JetBrains Mono', monospace; font-size: .75rem; }
 #qa-dialog .qa-apply-row .qa-tag { white-space: nowrap; }
+
+/* Fixed width, so the popup doesn't resize as notes and previews change length */
+#qa-dialog { width: min(480px, calc(100vw - 32px)); box-sizing: border-box; }
+#qa-dialog .qa-apply-row label { min-width: 0; }
+#qa-dialog .qa-apply-row .qa-tag { overflow: hidden; text-overflow: ellipsis; }
+#qa-dialog .qa-apply-note { min-height: 2.7em; }
