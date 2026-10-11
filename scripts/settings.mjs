@@ -17,6 +17,14 @@ export function registerSettings(moduleId) {
     default: "",
   });
 
+  // Shops built by the GM (Shop button). { [shopId]: { id, title, items: [...] } }
+  game.settings.register(moduleId, "shops", {
+    scope: "world",
+    config: false,
+    type: Object,
+    default: {},
+  });
+
   // Legacy live dice-tracking store. No longer used (stats come from the chat
   // log at upload time); kept registered so old worlds load cleanly.
   game.settings.register(moduleId, "diceRolls", {

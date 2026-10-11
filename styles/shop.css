@@ -1,0 +1,72 @@
+/* Shops — on top of the shared dialog styles (SkillCheck.mjs, quick-actions.css) */
+
+#qa-shop-dialog { width: min(700px, calc(100vw - 32px)); max-width: 700px !important; }
+
+/* GM panel floats: no backdrop, and clicks pass through around it so
+   compendiums / the Items sidebar stay usable for dragging. */
+#qa-shop-overlay.qa-floating { background: transparent; pointer-events: none; align-items: flex-start; justify-content: flex-start; }
+#qa-shop-overlay.qa-floating #qa-shop-dialog { pointer-events: auto; position: fixed; left: 110px; top: 70px; max-height: calc(100vh - 100px); }
+#qa-shop-dialog .qa-drag-handle { cursor: move; user-select: none; }
+#qa-shop-overlay:not(.qa-floating) .qa-drag-handle { cursor: default; }
+
+#qa-shop-dialog .qa-text, #qa-shop-dialog .qa-num, #qa-shop-dialog .qa-item-denom {
+  height: 1.9rem; background: #0a0a0f; color: #f0ece4;
+  border: 1px solid #2a2a3a !important; border-radius: 3px; box-shadow: none; outline: none;
+  padding: 0 .45rem; font-family: 'Crimson Text', serif; font-size: .9rem;
+}
+#qa-shop-dialog .qa-num { font-family: 'JetBrains Mono', monospace; font-size: .8rem; text-align: right; -moz-appearance: textfield; }
+#qa-shop-dialog .qa-num::-webkit-outer-spin-button, #qa-shop-dialog .qa-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+#qa-shop-dialog .qa-text:focus, #qa-shop-dialog .qa-num:focus, #qa-shop-dialog .qa-item-denom:focus { border-color: #8a6d2b !important; }
+#qa-shop-dialog .qa-shop-title { width: 100%; font-size: 1rem; }
+#qa-shop-dialog .qa-item-img { width: 30px; height: 30px; flex: none; border: 1px solid #2a2a3a; border-radius: 3px; object-fit: cover; }
+
+/* Shop list */
+#qa-shop-dialog .qa-shop-row label { gap: .55rem; }
+#qa-shop-dialog .qa-shop-row .btn { padding: .3rem .7rem; }
+#qa-shop-dialog .qa-del { padding: .3rem .55rem !important; }
+#qa-shop-dialog .qa-del.armed { color: #f0ece4 !important; background: #7a2828 !important; border-color: #c44e4e !important; }
+
+/* Editor rows: image · name · price+coin · stock · remove */
+#qa-shop-dialog .qa-shop-cols, #qa-shop-dialog .qa-ware-cols { display: grid; gap: .5rem; align-items: end; }
+#qa-shop-dialog .qa-shop-cols { grid-template-columns: 1fr 9.5rem 4rem 2.1rem; padding: 0 .45rem 0 calc(.45rem + 30px + .5rem); }
+#qa-shop-dialog .qa-shop-item .qa-item-name { flex: 1; min-width: 0; }
+#qa-shop-dialog .qa-price { display: flex; align-items: center; gap: .25rem; flex: none; }
+#qa-shop-dialog .qa-shop-item .qa-price { width: 9.5rem; }
+#qa-shop-dialog .qa-item-price, #qa-shop-dialog .qa-ware-price { width: 4.6rem; }
+#qa-shop-dialog .qa-item-denom { width: 4.4rem; padding: 0 .25rem; }
+#qa-shop-dialog .qa-item-stock { width: 4rem; flex: none; text-align: center; }
+#qa-shop-dialog .qa-dropzone {
+  margin: .4rem 0; padding: .9rem .6rem; text-align: center;
+  border: 1px dashed #8a6d2b; border-radius: 3px; color: #7a7770; font-size: .85rem;
+  background: rgba(201,168,76,.04); transition: background .1s, color .1s;
+}
+#qa-shop-dialog .qa-dropzone.over { background: rgba(201,168,76,.15); color: #e8c65a; }
+#qa-shop-dialog .qa-add-custom { padding: .3rem .8rem; }
+
+/* Visit rows: image · name/stock · price · qty · line total */
+#qa-shop-dialog .qa-ware-cols { grid-template-columns: 1fr 6.6rem 7.2rem 5rem; padding: 0 .45rem 0 calc(.45rem + 30px + .5rem); }
+#qa-shop-dialog .qa-ware-cols span:not(:first-child), #qa-shop-dialog .qa-shop-cols span:not(:first-child) { text-align: center; }
+#qa-shop-dialog .qa-ware-name { flex-direction: column; align-items: flex-start !important; gap: 0 !important; min-width: 0; cursor: default !important; }
+#qa-shop-dialog .qa-ware .qa-price { width: 6.6rem; }
+#qa-shop-dialog .qa-denom { font-family: 'JetBrains Mono', monospace; font-size: .75rem; color: #7a7770; }
+#qa-shop-dialog .qa-ware-price.edited { color: #e8c65a; border-color: #8a6d2b !important; }
+#qa-shop-dialog .qa-ware .num-input { flex: none; }
+#qa-shop-dialog .qa-ware .num-input input { width: 2.6rem; }
+#qa-shop-dialog .qa-line-total { width: 5rem; flex: none; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: .8rem; color: #f0ece4; }
+#qa-shop-dialog .qa-ware.qa-sold-out { opacity: .5; }
+#qa-shop-dialog .qa-purse { color: #e8c65a; }
+
+@media (max-width: 560px) {
+  #qa-shop-dialog .qa-shop-cols, #qa-shop-dialog .qa-ware-cols { display: none; }
+  #qa-shop-dialog .qa-shop-item, #qa-shop-dialog .qa-ware { flex-wrap: wrap; }
+  #qa-shop-dialog .qa-shop-item .qa-item-name, #qa-shop-dialog .qa-ware-name { flex: 1 1 calc(100% - 40px); }
+  #qa-overlay.qa-floating #qa-shop-dialog, #qa-shop-overlay.qa-floating #qa-shop-dialog { left: 8px; top: 8px; }
+}
+
+#qa-shop-dialog .qa-text, #qa-shop-dialog .qa-num, #qa-shop-dialog .qa-item-denom { box-sizing: border-box; }
+
+/* Receipt card */
+.qa-card .qa-receipt-head { display: flex; align-items: baseline; gap: .5em; }
+.qa-card .qa-receipt-head .qa-roll-name { flex: 1; min-width: 0; }
+.qa-card .qa-receipt-amt { flex: none; font-weight: 700; font-size: 1.05em; color: #1f1f1f; }
+.qa-card .qa-was { color: #a23030; font-weight: 700; }

@@ -1,115 +1,115 @@
 /*
  * Quick Actions popup — extras only.
- * The dialog itself (#qa-overlay / #qa-dialog: title, field labels, rows,
+ * The dialog itself (#qa-overlay / :is(#qa-dialog, #qa-shop-dialog): title, field labels, rows,
  * number inputs, buttons) and the chat card (.skill-check-card) are styled by
  * the skill-check stylesheet in SkillCheck.mjs, so every popup matches.
  * Values below reuse that palette.
  */
 
-#qa-dialog input[type=radio] {
+:is(#qa-dialog, #qa-shop-dialog) input[type=radio] {
   accent-color: #c9a84c;
   width: .95rem; height: .95rem; margin: 0;
   cursor: pointer;
 }
 
 /* Ability list */
-#qa-dialog .qa-ability-label { gap: .55rem; }
-#qa-dialog .qa-ability-icon { color: #c9a84c; width: 1rem; text-align: center; }
-#qa-dialog .qa-tag {
+:is(#qa-dialog, #qa-shop-dialog) .qa-ability-label { gap: .55rem; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-ability-icon { color: #c9a84c; width: 1rem; text-align: center; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-tag {
   font-family: 'JetBrains Mono', monospace; font-size: .7rem;
   color: #7a7770; letter-spacing: .05em; white-space: nowrap;
 }
-#qa-dialog .qa-use { padding: .3rem .8rem; }
-#qa-dialog .qa-empty { color: #7a7770; font-size: .85rem; line-height: 1.4; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-use { padding: .3rem .8rem; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-empty { color: #7a7770; font-size: .85rem; line-height: 1.4; }
 
 /* Pool */
-#qa-dialog .qa-pool { gap: .7rem; }
-#qa-dialog .qa-poolbar {
+:is(#qa-dialog, #qa-shop-dialog) .qa-pool { gap: .7rem; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-poolbar {
   flex: 1; height: 6px; background: #1a1a28; border-radius: 3px; overflow: hidden;
 }
-#qa-dialog .qa-poolfill {
+:is(#qa-dialog, #qa-shop-dialog) .qa-poolfill {
   height: 100%; width: 0;
   background: linear-gradient(90deg, #8a6d2b, #e8c65a);
   transition: width .15s ease;
 }
-#qa-dialog .qa-pool-num {
+:is(#qa-dialog, #qa-shop-dialog) .qa-pool-num {
   font-family: 'JetBrains Mono', monospace; font-size: .8rem; color: #7a7770; white-space: nowrap;
 }
-#qa-dialog .qa-pool-num b { color: #e8c65a; font-size: .95rem; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-pool-num b { color: #e8c65a; font-size: .95rem; }
 
 /* Target rows */
-#qa-dialog .qa-target label { cursor: default; justify-content: space-between; min-width: 0; }
-#qa-dialog .qa-target.qa-is-full label { color: #7a7770; }
-#qa-dialog .qa-dim { color: #7a7770; }
-#qa-dialog .qa-hp {
+:is(#qa-dialog, #qa-shop-dialog) .qa-target label { cursor: default; justify-content: space-between; min-width: 0; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-target.qa-is-full label { color: #7a7770; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-dim { color: #7a7770; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-hp {
   font-family: 'JetBrains Mono', monospace; font-size: .7rem; color: #7a7770;
   white-space: nowrap; margin-right: .3rem;
 }
-#qa-dialog .num-input button:disabled { opacity: .35; cursor: default; }
-#qa-dialog .num-input input:disabled { opacity: .5; }
-#qa-dialog .qa-full { padding: .3rem 0; width: 4.2rem; flex: none; text-align: center; }
-#qa-dialog .qa-full:disabled { opacity: .35; cursor: default; }
-#qa-dialog .qa-full:disabled:hover { background: #1a1a28 !important; color: #d4d0c8 !important; }
-#qa-dialog .qa-full-spacer { display: inline-block; width: 4.2rem; flex: none; }
-#qa-dialog .qa-other-name {
+:is(#qa-dialog, #qa-shop-dialog) .num-input button:disabled { opacity: .35; cursor: default; }
+:is(#qa-dialog, #qa-shop-dialog) .num-input input:disabled { opacity: .5; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-full { padding: .3rem 0; width: 4.2rem; flex: none; text-align: center; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-full:disabled { opacity: .35; cursor: default; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-full:disabled:hover { background: #1a1a28 !important; color: #d4d0c8 !important; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-full-spacer { display: inline-block; width: 4.2rem; flex: none; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-other-name {
   flex: 1; min-width: 0; height: 1.9rem;
   background: #0a0a0f; color: #f0ece4;
   border: 1px solid #2a2a3a; border-radius: 3px;
   padding: 0 .45rem; font-family: 'Crimson Text', serif; font-size: .85rem;
 }
-#qa-dialog .qa-other-name:focus { border-color: #8a6d2b; outline: none; box-shadow: none; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-other-name:focus { border-color: #8a6d2b; outline: none; box-shadow: none; }
 
 /* Allocation line + errors */
-#qa-dialog .qa-alloc {
+:is(#qa-dialog, #qa-shop-dialog) .qa-alloc {
   margin-top: .5rem; text-align: right;
   font-family: 'JetBrains Mono', monospace; font-size: .7rem; letter-spacing: .05em; color: #7a7770;
 }
-#qa-dialog .qa-alloc b { color: #f0ece4; }
-#qa-dialog .qa-error { margin-top: .45rem; color: #c44e4e; font-size: .85rem; }
-#qa-dialog .actions .btn:disabled { opacity: .4; cursor: default; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-alloc b { color: #f0ece4; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-error { margin-top: .45rem; color: #c44e4e; font-size: .85rem; }
+:is(#qa-dialog, #qa-shop-dialog) .actions .btn:disabled { opacity: .4; cursor: default; }
 
 @media (max-width: 480px) {
-  #qa-dialog { min-width: 0 !important; width: calc(100vw - 32px); }
-  #qa-dialog .qa-target { flex-wrap: wrap; }
-  #qa-dialog .qa-target label { flex: 1 1 100%; }
+  :is(#qa-dialog, #qa-shop-dialog) { min-width: 0 !important; width: calc(100vw - 32px); }
+  :is(#qa-dialog, #qa-shop-dialog) .qa-target { flex-wrap: wrap; }
+  :is(#qa-dialog, #qa-shop-dialog) .qa-target label { flex: 1 1 100%; }
 }
 
 /* Notes, confirm row */
-#qa-dialog .qa-note { margin-top: .35rem; color: #7a7770; font-size: .8rem; font-style: italic; }
-#qa-dialog .qa-confirm { gap: .6rem; font-size: .9rem; color: #f0ece4; padding: .55rem .6rem; }
-#qa-dialog .qa-confirm b { color: #e8c65a; font-weight: 600; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-note { margin-top: .35rem; color: #7a7770; font-size: .8rem; font-style: italic; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-confirm { gap: .6rem; font-size: .9rem; color: #f0ece4; padding: .55rem .6rem; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-confirm b { color: #e8c65a; font-weight: 600; }
 
 /* Dropdowns (weapon / damage type) */
-#qa-dialog .qa-select {
+:is(#qa-dialog, #qa-shop-dialog) .qa-select {
   width: 100%; height: 2rem;
   background: #12121a; color: #f0ece4;
   border: 1px solid #2a2a3a; border-radius: 3px;
   padding: 0 .45rem; font-family: 'Crimson Text', serif; font-size: .9rem;
 }
-#qa-dialog .qa-select:focus { border-color: #8a6d2b; outline: none; box-shadow: none; }
-#qa-dialog .qa-select option, #qa-dialog .qa-select optgroup { background: #12121a; color: #f0ece4; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-select:focus { border-color: #8a6d2b; outline: none; box-shadow: none; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-select option, :is(#qa-dialog, #qa-shop-dialog) .qa-select optgroup { background: #12121a; color: #f0ece4; }
 
 /* Amount picker */
-#qa-dialog .qa-amount-head { display: flex; align-items: center; justify-content: space-between; }
-#qa-dialog .qa-amount-head .mode-toggle { text-transform: none; letter-spacing: 0; }
-#qa-dialog .qa-amount-set label { color: #7a7770; font-size: .8rem; }
-#qa-dialog .qa-dice-row { flex-wrap: wrap; gap: .35rem; }
-#qa-dialog .qa-die {
+:is(#qa-dialog, #qa-shop-dialog) .qa-amount-head { display: flex; align-items: center; justify-content: space-between; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-amount-head .mode-toggle { text-transform: none; letter-spacing: 0; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-amount-set label { color: #7a7770; font-size: .8rem; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-dice-row { flex-wrap: wrap; gap: .35rem; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-die {
   padding: .3rem .55rem; font-family: 'JetBrains Mono', monospace; font-size: .75rem;
   letter-spacing: 0; text-transform: none; min-width: 2.6rem;
 }
-#qa-dialog .qa-die-clear { padding: .3rem .55rem; margin-left: auto; letter-spacing: 0; }
-#qa-dialog .qa-formula {
+:is(#qa-dialog, #qa-shop-dialog) .qa-die-clear { padding: .3rem .55rem; margin-left: auto; letter-spacing: 0; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-formula {
   flex: 1; min-width: 0; height: 1.9rem;
   background: #0a0a0f; color: #f0ece4;
   border: 1px solid #2a2a3a; border-radius: 3px;
   padding: 0 .45rem; font-family: 'JetBrains Mono', monospace; font-size: .85rem;
 }
-#qa-dialog .qa-formula:focus { border-color: #8a6d2b; outline: none; box-shadow: none; }
-#qa-dialog [hidden] { display: none !important; }
+:is(#qa-dialog, #qa-shop-dialog) .qa-formula:focus { border-color: #8a6d2b; outline: none; box-shadow: none; }
+:is(#qa-dialog, #qa-shop-dialog) [hidden] { display: none !important; }
 
 /* Healer */
-#qa-dialog .checkbox-row label { gap: .45rem; }
+:is(#qa-dialog, #qa-shop-dialog) .checkbox-row label { gap: .45rem; }
 
 /* ── Chat cards from the "+" button ────────────────────────────────────────
  * Header/background come from .skill-check-card (SkillCheck.mjs). Each row:

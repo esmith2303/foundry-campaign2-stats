@@ -63,6 +63,23 @@ To add one: create `scripts/abilities/<Name>.mjs` (see `LayOnHands.mjs`) and
 add it to `ABILITIES` (sheet abilities) or `GENERAL` (always shown) in
 `scripts/QuickActions.mjs`.
 
+## Shops (GM "store" button)
+
+The GM gets a **store** button in the token controls (players don't).
+
+- **Shops** list: every saved shop with Edit / Visit / Delete, and New Shop.
+- **Editing a shop** (a floating panel — move it by its title; the rest of the
+  screen stays usable): set the shop's name, drag items in from a compendium,
+  the Items sidebar or a character sheet (price comes from the item), or add a
+  custom item (0 gp). Name, price, coin and stock are editable; leave stock
+  empty for unlimited. Shops are saved in the world for next time.
+- **Visit** opens the shop for every player who has a character (and the GM).
+  Players pick who's buying, quantities and — if they haggle — a different
+  price. The GM's client checks stock and money, takes the coins (giving
+  change), adds the items (stacking consumables/loot), reduces stock for
+  everyone, and posts a receipt card; changed prices are flagged in red.
+  The GM must be logged in for purchases to go through.
+
 ## Backfilling / correcting from a chat export
 
 ```bash

@@ -3,6 +3,7 @@ import { StatsUploader } from "./StatsUploader.mjs";
 import { registerSettings } from "./settings.mjs";
 import { registerSkillCheck, openSkillCheckDialog } from "./SkillCheck.mjs";
 import { registerQuickActions, quickActionsTool, openQuickActions, QUICK_ACTIONS_TOOL } from "./QuickActions.mjs";
+import { registerShop, shopTool, openShopManager, SHOP_TOOL } from "./shop/Shop.mjs";
 
 const MODULE_ID = "dnd-group-campaign-2-stats";
 
@@ -26,6 +27,7 @@ Hooks.once("ready", async () => {
   game.modules.get(MODULE_ID).uploader = new StatsUploader(MODULE_ID);
   registerSkillCheck();
   registerQuickActions();
+  registerShop();
 
   // Clear the old live-tracking store; nothing reads it any more
   if (game.user.isGM) {
@@ -47,6 +49,8 @@ Hooks.on("getSceneControlButtons", (controls) => {
   tokenControls.tools[QUICK_ACTIONS_TOOL] = quickActionsTool();
 
   if (!game.user.isGM) return;
+  // Shops — GM only (players just get the Visit popup when the GM opens one)
+  tokenControls.tools[SHOP_TOOL] = shopTool();
   tokenControls.tools["midi-qol-upload"] = {
     name: "midi-qol-upload",
     title: "Upload Midi-QOL Stats",
@@ -76,6 +80,14 @@ Hooks.on("renderSceneControls", () => {
   }
 
   if (!game.user.isGM) return;
+
+  const shopBtn = document.querySelector(`[data-tool="${SHOP_TOOL}"]`);
+  if (shopBtn) {
+    const newShopBtn = shopBtn.cloneNode(true);
+    shopBtn.parentNode.replaceChild(newShopBtn, shopBtn);
+    newShopBtn.addEventListener("click", (e) => { e.stopPropagation(); openShopManager(); });
+  }
+
   const btn = document.querySelector('[data-tool="midi-qol-upload"]');
   if (!btn) return;
   const newBtn = btn.cloneNode(true);

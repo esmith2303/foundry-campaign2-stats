@@ -27,6 +27,11 @@ const GENERAL = [AddKill, AddDamage, AddHealing];
 const ABILITIES = [Healer, LayOnHands];
 
 const GM_HANDLERS = Object.assign({}, ...[...GENERAL, ...ABILITIES].map(a => a.gmActions || {}));
+
+/** Let other features (e.g. the shop) run actions on the GM's client via runAsGM. */
+export function registerGmAction(name, handler) {
+  GM_HANDLERS[name] = handler;
+}
 const pending = new Map();   // requestId → { resolve, reject, timer }
 
 // ── Setup ────────────────────────────────────────────────────────────────────
@@ -123,7 +128,7 @@ function onSocket(data) {
 
 // ── Popup ────────────────────────────────────────────────────────────────────
 
-function castersForUser() {
+export function castersForUser() {
   const pcs = partyCharacters();
   if (game.user.isGM) return pcs;
   const mine = pcs.filter(a => a.isOwner);
