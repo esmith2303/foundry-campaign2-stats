@@ -117,3 +117,9 @@
 @media (max-width: 560px) {
   #qa-shop-dialog .qa-details-grid, #qa-shop-dialog .qa-details-effect { grid-template-columns: 1fr 1fr; }
 }
+
+/* Shop owner: dropdown + a name box when "someone else" is picked */
+#qa-shop-dialog .qa-owner-row { display: flex; gap: .5rem; }
+#qa-shop-dialog .qa-owner-row .qa-owner-select { flex: 1 1 50%; min-width: 0; height: 1.9rem; }
+#qa-shop-dialog .qa-owner-row .qa-owner-name { flex: 1 1 50%; min-width: 0; box-sizing: border-box; }
+#qa-shop-dialog .qa-owner-row .qa-owner-name[hidden] { display: none; }

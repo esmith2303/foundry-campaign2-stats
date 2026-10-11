@@ -85,6 +85,10 @@ The GM gets a **store** button in the token controls (players don't).
   (Items sidebar › Shop Items) edited with dnd5e's own sheet; the shop picks up
   changes on save. Saving checks every item is valid for dnd5e. Shops are saved
   in the world for next time.
+- **Shop owner**: pick any character sheet (player characters, NPCs, others)
+  or "Someone else" and type a name. The shop then shows as
+  "Shop Name (Shop Owner)" in the list, the shop window, receipts and the
+  dashboard. An owner picked from a sheet follows that sheet's renames.
 - **Visit** opens the shop for every player who has a character (and the GM).
   Players pick who's buying, quantities and — if they haggle — a different
   price. The GM's client checks stock and money, takes the coins (giving
@@ -109,6 +113,12 @@ the dashboard's own script:
 ```html
 <script src="shops.js"></script>
 ```
+
+`dashboard/test-worlds.js` lets in every player character from worlds whose
+world ID has "test" in it (the dashboard otherwise only shows the four campaign
+PCs), so test characters show up when looking at a test world; they're tagged
+TEST in Manage Names. Install it the same way:
+`<script src="test-worlds.js"></script>`.
 
 ## Backfilling / correcting from a chat export
 

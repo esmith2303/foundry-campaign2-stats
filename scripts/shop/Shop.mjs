@@ -25,6 +25,38 @@ const BUY = "shop.buy";
 const PHYSICAL = new Set(["weapon", "equipment", "consumable", "tool", "loot", "container", "backpack"]);
 const STACKABLE = new Set(["consumable", "loot"]);
 
+/** The shop owner's name: a character sheet (follows renames) or a typed name. */
+export function ownerName(shop) {
+  const o = shop?.owner;
+  if (!o) return "";
+  return ((o.actorId && game.actors?.get(o.actorId)?.name) || o.name || "").trim();
+}
+const OWNER_CUSTOM = "__custom";
+
+/** Owner dropdown: nobody, every actor (grouped), or a typed name. */
+function ownerOptions(shop) {
+  const o = shop.owner;
+  // An owner whose sheet was deleted becomes a typed name
+  if (o?.actorId && !game.actors?.get(o.actorId)) shop.owner = o.name ? { actorId: null, name: o.name } : null;
+  const current = shop.owner?.actorId ?? (shop.owner ? OWNER_CUSTOM : "");
+  const actors = [...(game.actors?.contents ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+  const groups = [
+    ["Player characters", actors.filter(a => a.type === "character" && a.hasPlayerOwner)],
+    ["NPCs", actors.filter(a => a.type === "npc")],
+    ["Other characters", actors.filter(a => !(a.type === "character" && a.hasPlayerOwner) && a.type !== "npc")],
+  ].filter(([, list]) => list.length);
+  const opt = (value, label) => `<option value="${escapeHtml(value)}"${value === current ? " selected" : ""}>${escapeHtml(label)}</option>`;
+  return opt("", "— no owner —")
+    + groups.map(([label, list]) => `<optgroup label="${escapeHtml(label)}">${list.map(a => opt(a.id, a.name)).join("")}</optgroup>`).join("")
+    + opt(OWNER_CUSTOM, "Someone else — type a name…");
+}
+
+/** "Shop Name (Shop Owner)" — or just the shop name when there's no owner. */
+export function shopLabel(shop) {
+  const title = shop?.title || "Untitled shop", owner = ownerName(shop);
+  return owner ? `${title} (${owner})` : title;
+}
+
 // ── Setup ────────────────────────────────────────────────────────────────────
 
 export function registerShop() {
@@ -203,7 +235,7 @@ export function openShopManager() {
         <div class="players">
           ${shops.length ? shops.map(s => `
             <div class="player-row qa-shop-row" data-id="${s.id}">
-              <label><i class="fas fa-store qa-ability-icon"></i><span>${escapeHtml(s.title || "Untitled shop")}</span></label>
+              <label><i class="fas fa-store qa-ability-icon"></i><span>${escapeHtml(shopLabel(s))}</span></label>
               <span class="qa-tag">${s.items?.length ?? 0} item${s.items?.length === 1 ? "" : "s"}</span>
               <button type="button" class="btn" data-act="edit">Edit</button>
               <button type="button" class="btn primary" data-act="visit">Visit</button>
@@ -256,6 +288,14 @@ export function openShopManager() {
       <div class="field">
         <div class="field-label">Shop name</div>
         <input type="text" class="qa-text qa-shop-title" placeholder="e.g. The Gilded Flagon" value="${escapeHtml(shop.title)}" maxlength="80">
+      </div>
+      <div class="field">
+        <div class="field-label">Shop owner</div>
+        <div class="qa-owner-row">
+          <select class="qa-select qa-owner-select">${ownerOptions(shop)}</select>
+          <input type="text" class="qa-text qa-owner-name" placeholder="Owner's name" maxlength="60"
+            value="${escapeHtml(shop.owner && !shop.owner.actorId ? shop.owner.name : "")}"${shop.owner && !shop.owner.actorId ? "" : " hidden"}>
+        </div>
       </div>
       <div class="field">
         <div class="field-label qa-shop-cols"><span>Wares</span><span>Price</span><span>Stock</span><span></span><span></span></div>
@@ -338,6 +378,22 @@ export function openShopManager() {
     };
     list.querySelectorAll(".qa-shop-entry").forEach(bindRow);
     dialog.querySelector(".qa-shop-title").addEventListener("input", (e) => { shop.title = e.target.value; });
+    // Owner: a character sheet, a typed name, or nobody
+    const ownerSel = dialog.querySelector(".qa-owner-select"), ownerInput = dialog.querySelector(".qa-owner-name");
+    const readOwner = () => {
+      if (ownerSel.value === OWNER_CUSTOM) {
+        const name = ownerInput.value.trim();
+        shop.owner = name ? { actorId: null, name } : null;
+      } else if (ownerSel.value) {
+        shop.owner = { actorId: ownerSel.value, name: game.actors.get(ownerSel.value)?.name ?? "" };
+      } else shop.owner = null;
+    };
+    ownerSel.addEventListener("change", () => {
+      ownerInput.hidden = ownerSel.value !== OWNER_CUSTOM;
+      if (!ownerInput.hidden) ownerInput.focus();
+      readOwner();
+    });
+    ownerInput.addEventListener("input", readOwner);
 
     // Compendium: open the remembered (or default) item compendium beside the panel
     const packSel = dialog.querySelector(".qa-pack");
@@ -379,6 +435,7 @@ export function openShopManager() {
     async function doSave() {
       showErr("");
       shop.title = shop.title.trim() || "Untitled shop";
+      if (shop.owner?.actorId) shop.owner.name = game.actors.get(shop.owner.actorId)?.name ?? shop.owner.name;
       try {
         for (const it of shop.items) {
           if (it.linkUuid) {
@@ -412,7 +469,7 @@ export function openShopManager() {
     dialog.querySelector('[data-act="back"]').addEventListener("click", showList);
     dialog.querySelector('[data-act="save"]').addEventListener("click", async () => {
       if (!await doSave()) return;
-      ui.notifications.info(`Saved ${shop.title}.`);
+      ui.notifications.info(`Saved ${shopLabel(shop)}.`);
       isNew = false;
       dialog.querySelector(".title").textContent = "Edit Shop";
     });
@@ -441,7 +498,7 @@ function visit(shop) {
   if (!shop) return;
   game.socket.emit(SOCKET, { action: "shop.visit", shop });
   openVisit(shop);
-  ui.notifications.info(`${shop.title} is open for the party.`);
+  ui.notifications.info(`${shopLabel(shop)} is open for the party.`);
 }
 
 let current = null;   // { shop, render } for the open visit popup
@@ -465,7 +522,7 @@ function openVisit(shop) {
 
   function render() {
     dialog.innerHTML = `
-      <div class="title">${escapeHtml(shop.title)}</div>
+      <div class="title">${escapeHtml(shopLabel(shop))}</div>
       <div class="field">
         <div class="field-label">Buying as</div>
         <div class="players">
@@ -669,7 +726,7 @@ async function gmBuy({ shopId, actorId, lines } = {}, user) {
         <header class="card-header">
           <span class="icon"><i class="fas fa-store"></i></span>
           <div class="title-block">
-            <div class="skill-name">${escapeHtml(shop.title)}</div>
+            <div class="skill-name">${escapeHtml(shopLabel(shop))}</div>
             <div class="ability-tag">${escapeHtml(actor.name)} — purchase</div>
           </div>
           <span class="dc-badge">${formatCp(totalCp)}</span>
@@ -680,7 +737,7 @@ async function gmBuy({ shopId, actorId, lines } = {}, user) {
         </section>
       </div>`,
     flags: { [MODULE_ID]: { shopPurchase: {
-      shopId, shopTitle: shop.title, actorId: actor.id, totalCp, haggled,
+      shopId, shopTitle: shop.title, shopOwner: ownerName(shop) || null, actorId: actor.id, totalCp, haggled,
       lines: bought.map(b => ({ name: b.it.name, type: b.it.type ?? b.it.data?.type ?? null, qty: b.q, unitCp: b.unitCp, listCp: b.listCp })),
     } } },
   });

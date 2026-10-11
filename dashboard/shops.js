@@ -41,6 +41,11 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
     });
   }
+  // "Shop Name (Shop Owner)", or just the name
+  function shopName(name, owner) {
+    name = name || "Shop";
+    return owner ? name + " (" + owner + ")" : name;
+  }
   function when(ts) {
     var d = new Date(ts);
     return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -93,7 +98,7 @@
       card("Purchases", transactions, items + " item" + (items === 1 ? "" : "s") + " bought") +
       card("Biggest Spender", bigSpender.actor_name, money(bigSpender.spent_cp), "small") +
       card("Most Expensive Item", top ? top.item_name : "—", top ? money(top.unit_cp) + " · " + top.actor_name : "", "gold small") +
-      card("Most Used Shop", busiest ? busiest.shop_name || "Shop" : "—", busiest ? busiest.transactions + " purchase" + (busiest.transactions === 1 ? "" : "s") + " · " + money(busiest.spent_cp) : "", "small") +
+      card("Most Used Shop", busiest ? shopName(busiest.shop_name, busiest.shop_owner) : "—", busiest ? busiest.transactions + " purchase" + (busiest.transactions === 1 ? "" : "s") + " · " + money(busiest.spent_cp) : "", "small") +
       "</div>";
 
     html += '<div class="grid-2"><div class="panel"><h2>Gold Spent by Player</h2><div class="chart-container"><canvas id="shopSpendChart"></canvas></div></div>' +
@@ -102,18 +107,18 @@
     html += '<div class="panel"><h2>Shoppers</h2><div class="table-scroll"><table><thead><tr><th>Name</th><th class="num">Spent</th><th class="num">Purchases</th><th class="num">Items</th><th>Most Expensive</th><th>Favourite Shop</th></tr></thead><tbody>';
     byActor.forEach(function (a) {
       html += '<tr><td class="name">' + esc(a.actor_name) + '</td><td class="num highlight">' + money(a.spent_cp) + '</td><td class="num">' + a.transactions +
-        '</td><td class="num">' + a.items + "</td><td>" + esc(a.priciest_item || "—") + ' <span class="dim">' + money(a.max_unit_cp) + "</span></td><td>" + esc(a.favourite_shop || "—") + "</td></tr>";
+        '</td><td class="num">' + a.items + "</td><td>" + esc(a.priciest_item || "—") + ' <span class="dim">' + money(a.max_unit_cp) + "</span></td><td>" + esc(a.favourite_shop ? shopName(a.favourite_shop, a.favourite_shop_owner) : "—") + "</td></tr>";
     });
     html += "</tbody></table></div></div>";
 
     html += '<div class="grid-2"><div class="panel"><h2>Most Expensive Items</h2><div class="table-scroll"><table><thead><tr><th>Item</th><th>Buyer</th><th class="num">Price</th></tr></thead><tbody>';
     topItems.forEach(function (r) {
-      html += "<tr><td>" + esc(r.item_name) + (r.qty > 1 ? ' <span class="dim">×' + r.qty + "</span>" : "") + '<br><span class="dim">' + esc(r.shop_name || "") + "</span></td><td>" + esc(r.actor_name) + '</td><td class="num highlight">' + price(r) + "</td></tr>";
+      html += "<tr><td>" + esc(r.item_name) + (r.qty > 1 ? ' <span class="dim">×' + r.qty + "</span>" : "") + '<br><span class="dim">' + esc(shopName(r.shop_name, r.shop_owner)) + "</span></td><td>" + esc(r.actor_name) + '</td><td class="num highlight">' + price(r) + "</td></tr>";
     });
     html += '</tbody></table></div></div><div class="panel"><h2>Recent Purchases</h2><div class="table-scroll"><table><thead><tr><th>When</th><th>Buyer</th><th>Item</th><th class="num">Paid</th></tr></thead><tbody>';
     recent.forEach(function (r) {
       html += '<tr><td class="dim">' + when(r.occurred_at) + "</td><td>" + esc(r.actor_name) + "</td><td>" + esc(r.item_name) + (r.qty > 1 ? ' <span class="dim">×' + r.qty + "</span>" : "") +
-        '<br><span class="dim">' + esc(r.shop_name || "") + '</span></td><td class="num">' + money(r.total_cp) + (r.qty > 1 || r.list_cp !== r.unit_cp ? '<br><span class="dim">' + price(r) + " each</span>" : "") + "</td></tr>";
+        '<br><span class="dim">' + esc(shopName(r.shop_name, r.shop_owner)) + '</span></td><td class="num">' + money(r.total_cp) + (r.qty > 1 || r.list_cp !== r.unit_cp ? '<br><span class="dim">' + price(r) + " each</span>" : "") + "</td></tr>";
     });
     html += "</tbody></table></div></div></div>";
 
@@ -133,13 +138,13 @@
     });
     new Chart(document.getElementById("shopShopsChart"), {
       type: "doughnut",
-      data: { labels: byShop.map(function (s) { return s.shop_name || "Shop"; }),
+      data: { labels: byShop.map(function (s) { return shopName(s.shop_name, s.shop_owner); }),
         datasets: [{ data: byShop.map(function (s) { return s.transactions; }),
           backgroundColor: byShop.map(function (_, i) { return C[i % C.length] + "cc"; }), borderColor: "#0a0a0f", borderWidth: 2 }] },
       options: { responsive: true, maintainAspectRatio: false,
         plugins: { legend: { position: "right", labels: { padding: 12, usePointStyle: true, pointStyle: "rectRounded" } },
           tooltip: { callbacks: { label: function (ctx) { var s = byShop[ctx.dataIndex];
-            return (s.shop_name || "Shop") + ": " + s.transactions + " purchase" + (s.transactions === 1 ? "" : "s") + ", " + money(s.spent_cp) + ", " + s.buyers + " buyer" + (s.buyers === 1 ? "" : "s"); } } } } },
+            return shopName(s.shop_name, s.shop_owner) + ": " + s.transactions + " purchase" + (s.transactions === 1 ? "" : "s") + ", " + money(s.spent_cp) + ", " + s.buyers + " buyer" + (s.buyers === 1 ? "" : "s"); } } } } },
     });
   }
 

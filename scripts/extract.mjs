@@ -270,7 +270,7 @@ export function extractMessage(message, ctx) {
       if (!l?.name || !(qty > 0) || !Number.isFinite(unitCp) || unitCp < 0) return;
       purchases.push({
         actorId: shop.actorId, actorName: nameOf(shop.actorId, message.speaker?.alias),
-        shopId: shop.shopId ?? null, shopName: shop.shopTitle || "Shop",
+        shopId: shop.shopId ?? null, shopName: shop.shopTitle || "Shop", shopOwner: shop.shopOwner || null,
         itemName: l.name, itemType: l.type ?? null, qty, unitCp,
         listCp: Number.isFinite(Number(l.listCp)) ? Math.round(Number(l.listCp)) : null,
         key: `${messageId}:${shop.actorId}:purchase:${i}`,
@@ -336,7 +336,7 @@ export async function uploadEvents({ url, apiKey, worldId, worldName, results, c
       messages: chunk.map(r => ({ id: r.messageId, ts: r.timestamp })),
       dice: chunk.flatMap(r => r.dice.map(d => ({ m: r.messageId, a: d.actorId, n: d.actorName, d: d.dieType, f: d.face, c: d.count }))),
       outcomes: chunk.flatMap(r => r.outcomes.map(o => ({ m: r.messageId, a: o.actorId, n: o.actorName, t: o.type, s: o.success, k: o.key, v: o.amount ?? null, d: o.detail ?? null, i: o.item ?? null }))),
-      purchases: chunk.flatMap(r => (r.purchases ?? []).map(p => ({ m: r.messageId, a: p.actorId, n: p.actorName, s: p.shopId, sn: p.shopName, i: p.itemName, t: p.itemType, q: p.qty, u: p.unitCp, l: p.listCp, k: p.key }))),
+      purchases: chunk.flatMap(r => (r.purchases ?? []).map(p => ({ m: r.messageId, a: p.actorId, n: p.actorName, s: p.shopId, sn: p.shopName, so: p.shopOwner, i: p.itemName, t: p.itemType, q: p.qty, u: p.unitCp, l: p.listCp, k: p.key }))),
     };
     const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
     if (!res.ok) {

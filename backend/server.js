@@ -169,6 +169,7 @@ async function migrateUp() {
       t.string("actor_name", 255).nullable();
       t.string("shop_id", 100).nullable();
       t.string("shop_name", 255).nullable();
+      t.string("shop_owner", 255).nullable();
       t.string("item_name", 255).notNullable();
       t.string("item_type", 40).nullable();
       t.integer("qty").notNullable();
@@ -181,6 +182,9 @@ async function migrateUp() {
       t.index(["occurred_at"]);
     });
     console.log("Created table chat_purchases");
+  } else if (!(await db.schema.hasColumn("chat_purchases", "shop_owner"))) {
+    await db.schema.alterTable("chat_purchases", (t) => t.string("shop_owner", 255).nullable());
+    console.log("Added shop_owner column to chat_purchases");
   }
 }
 
@@ -331,7 +335,8 @@ app.post("/api/chat-events", authMiddleware, async (req, res) => {
     if (!at || !p.a || !p.i || !p.k || !(qty > 0) || unit === null || unit < 0) continue;
     purchaseRows.push({ world_id: worldId, message_id: String(p.m), occurred_at: at, actor_id: String(p.a),
                         actor_name: p.n ?? null, shop_id: p.s ? String(p.s).slice(0, 100) : null,
-                        shop_name: p.sn ? String(p.sn).slice(0, 255) : null, item_name: String(p.i).slice(0, 255),
+                        shop_name: p.sn ? String(p.sn).slice(0, 255) : null, shop_owner: p.so ? String(p.so).slice(0, 255) : null,
+                        item_name: String(p.i).slice(0, 255),
                         item_type: p.t ? String(p.t).slice(0, 40) : null, qty, unit_cp: unit,
                         list_cp: int(p.l), total_cp: qty * unit, event_key: String(p.k).slice(0, 200) });
   }
@@ -543,6 +548,13 @@ app.get("/api/worlds", authMiddleware, async (req, res) => {
 app.get("/api/names", authMiddleware, async (req, res) => {
   const excludeWorlds = req.query.excludeWorlds;
   try {
+    // ?testWorlds=1 → the player characters seen in worlds whose ID has "test"
+    // in it (from the chat-log tables, which only ever hold PCs)
+    if (req.query.testWorlds) {
+      const lists = await Promise.all(["chat_dice", "chat_outcomes", "chat_purchases"]
+        .map(t => db(t).distinct("actor_name").whereRaw("LOWER(world_id) LIKE ?", ["%test%"])));
+      return res.json([...new Set(lists.flat().map(r => r.actor_name).filter(Boolean))].sort());
+    }
     let q = db("actor_stats").distinct("actor_name").orderBy("actor_name");
     q = applyExcludes(q, null, excludeWorlds);
     const rows = await q;
@@ -670,17 +682,17 @@ app.get("/api/shop-stats", authMiddleware, async (req, res) => {
       base().select("actor_name").sum("total_cp as spent_cp").sum("qty as items")
         .countDistinct("message_id as transactions").max("unit_cp as max_unit_cp")
         .groupBy("actor_name").orderBy("spent_cp", "desc"),
-      base().select("shop_name").sum("total_cp as spent_cp").sum("qty as items")
+      base().select("shop_name", "shop_owner").sum("total_cp as spent_cp").sum("qty as items")
         .countDistinct("message_id as transactions").countDistinct("actor_name as buyers")
-        .groupBy("shop_name").orderBy("transactions", "desc"),
-      base().select("actor_name", "item_name", "shop_name", "unit_cp", "list_cp", "qty", "occurred_at")
+        .groupBy("shop_name", "shop_owner").orderBy("transactions", "desc"),
+      base().select("actor_name", "item_name", "shop_name", "shop_owner", "unit_cp", "list_cp", "qty", "occurred_at")
         .orderBy("unit_cp", "desc").orderBy("occurred_at", "desc").limit(10),
       base().select("item_name").sum("qty as qty").sum("total_cp as spent_cp").countDistinct("actor_name as buyers")
         .groupBy("item_name").orderBy("qty", "desc").limit(10),
-      base().select("actor_name", "item_name", "shop_name", "unit_cp", "list_cp", "qty", "total_cp", "occurred_at")
+      base().select("actor_name", "item_name", "shop_name", "shop_owner", "unit_cp", "list_cp", "qty", "total_cp", "occurred_at")
         .orderBy("occurred_at", "desc").orderBy("id", "desc").limit(25),
-      base().select("actor_name", "shop_name").countDistinct("message_id as transactions")
-        .groupBy("actor_name", "shop_name"),
+      base().select("actor_name", "shop_name", "shop_owner").countDistinct("message_id as transactions")
+        .groupBy("actor_name", "shop_name", "shop_owner"),
     ]);
     // Each player's most used shop and most expensive item
     for (const a of byActor) {
@@ -688,6 +700,7 @@ app.get("/api/shop-stats", authMiddleware, async (req, res) => {
       const shops = favShop.filter(f => f.actor_name === a.actor_name).map(f => n(f, "transactions"))
         .sort((x, y) => y.transactions - x.transactions);
       a.favourite_shop = shops[0]?.shop_name ?? null;
+      a.favourite_shop_owner = shops[0]?.shop_owner ?? null;
       a.priciest_item = (await base().where("actor_name", a.actor_name).orderBy("unit_cp", "desc").first("item_name"))?.item_name ?? null;
     }
     res.json({
