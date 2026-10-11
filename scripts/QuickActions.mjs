@@ -33,6 +33,23 @@ const pending = new Map();   // requestId → { resolve, reject, timer }
 
 export function registerQuickActions() {
   game.socket.on(SOCKET, onSocket);
+  // Click a result box on our chat cards to show/hide its dice.
+  // V13 fires renderChatMessageHTML (HTMLElement); V11/12 renderChatMessage (jQuery).
+  Hooks.on("renderChatMessageHTML", (_m, html) => bindQaCards(html));
+  Hooks.on("renderChatMessage", (_m, html) => bindQaCards(html));
+}
+
+export function bindQaCards(html) {
+  const root = html instanceof HTMLElement ? html : html?.[0] ?? html?.get?.(0);
+  for (const box of root?.querySelectorAll?.(".qa-card [data-qa-toggle]") ?? []) {
+    if (box._qaBound) continue;
+    box._qaBound = true;
+    box.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      box.closest(".qa-roll")?.classList.toggle("qa-open");
+    });
+  }
 }
 
 /** Tool definition for getSceneControlButtons (shown to every user). */

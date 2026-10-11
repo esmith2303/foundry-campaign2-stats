@@ -63,7 +63,6 @@ async function gmApply({ actorId, featId, kitId, plan, reroll = true } = {}, use
     for (let i = 0; i < count; i++) {
       const hd = hitDiceOf(target).find(h => h.left > 0);
       const roll = await new Roll(`1d${hd.faces}${reroll ? "r1" : ""} + ${prof}`).evaluate();
-      const results = (roll.terms?.[0]?.results ?? []).map(r => r.result);
       const applied = Math.max(0, Math.min(roll.total, hp.max - current));
       current += applied;
       await hd.item.update({ [hd.path]: hd.spent + 1 });
@@ -72,8 +71,7 @@ async function gmApply({ actorId, featId, kitId, plan, reroll = true } = {}, use
       heals.push(applied);
       rows.push({
         name: target.name, value: `+${applied}`, valueCls: "success", roll,
-        meta: [`hit die d${hd.faces}`, results.length > 1 && `rerolled a 1`,
-               applied < roll.total && `capped at full HP`],
+        meta: [`hit die d${hd.faces}`, applied < roll.total && `capped at full HP (${roll.total})`],
       });
     }
     if (current !== hp.value) await target.update({ "system.attributes.hp.value": current });
@@ -87,7 +85,7 @@ async function gmApply({ actorId, featId, kitId, plan, reroll = true } = {}, use
     content: await statCard({
       icon: "fas fa-kit-medical", title: feat.name, subtitle: actor.name,
       badge: `Kit ${kitAfter} left`, rows,
-      summary: `${totalUses} kit use${totalUses === 1 ? "" : "s"} · ${hdSpent} hit ${hdSpent === 1 ? "die" : "dice"} spent${reroll ? " · 1s rerolled" : ""}`,
+      summary: `${totalUses} kit use${totalUses === 1 ? "" : "s"} · ${hdSpent} hit ${hdSpent === 1 ? "die" : "dice"} spent`,
     }),
     rolls,
     flags: { [MODULE_ID]: { abilityUse: { ability: "healer", actorId: actor.id, itemName: feat.name, heals, kitUses: totalUses } } },

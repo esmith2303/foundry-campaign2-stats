@@ -113,8 +113,9 @@
 
 /* ── Chat cards from the "+" button ────────────────────────────────────────
  * Header/background come from .skill-check-card (SkillCheck.mjs). Each row:
- * name, small meta line, formula bar, then a big result box laid out like a
- * dnd5e roll result (icon · total · chevron). Click it for the dice. */
+ * name, small meta line, formula bar, then a result box laid out like a dnd5e
+ * roll (icon · total · chevron). Clicking the box shows the dice above it,
+ * dnd5e-style (die picture with its number, sum on the right, then modifier). */
 .qa-card .qa-rows { list-style: none; margin: 0; padding: 0; }
 .qa-card .qa-roll-row { padding: .45em .1em .55em; border-bottom: 1px solid #d8d6c8; }
 .qa-card .qa-roll-row:last-child { border-bottom: none; }
@@ -125,37 +126,54 @@
 
 .qa-card .qa-formula {
   text-align: center; font-size: 1.05em; color: #1f1f1f;
-  background: rgba(255,255,255,.45); border: 1px solid #b5b3a4; border-radius: 4px;
+  background: rgba(0,0,0,.04); border: 1px solid #b5b3a4; border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08);
   padding: .25em .5em; margin-bottom: .35em;
 }
 
+/* Dice breakdown (hidden until the result box is clicked) */
+.qa-card .qa-breakdown { display: none; margin: 0 0 .35em; }
+.qa-card .qa-roll.qa-open .qa-breakdown { display: block; }
+.qa-card .qa-bd-line {
+  display: flex; align-items: center; justify-content: space-between; gap: .5em;
+  padding: .3em .35em; border-bottom: 1px solid #d8d6c8;
+}
+.qa-card .qa-bd-line:last-child { border-bottom: none; }
+.qa-card .qa-bd-dice { display: flex; flex-wrap: wrap; gap: .2em; }
+.qa-card .qa-die {
+  width: 30px; height: 30px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: url("../../../icons/svg/d20-grey.svg") center / contain no-repeat;
+  font-weight: 700; font-size: .85em; color: #1f1f1f;
+}
+.qa-card .qa-die.d4 { background-image: url("../../../icons/svg/d4-grey.svg"); }
+.qa-card .qa-die.d6 { background-image: url("../../../icons/svg/d6-grey.svg"); }
+.qa-card .qa-die.d8 { background-image: url("../../../icons/svg/d8-grey.svg"); }
+.qa-card .qa-die.d10 { background-image: url("../../../icons/svg/d10-grey.svg"); }
+.qa-card .qa-die.d12 { background-image: url("../../../icons/svg/d12-grey.svg"); }
+.qa-card .qa-die.d20 { background-image: url("../../../icons/svg/d20-grey.svg"); }
+.qa-card .qa-die.dropped { opacity: .45; text-decoration: line-through; text-decoration-color: #9c7a3a; text-decoration-thickness: 2px; }
+.qa-card .qa-bd-value { font-weight: 700; font-size: 1.3em; color: #1f1f1f; }
+.qa-card .qa-bd-sign { color: #9a978a; font-weight: 400; margin-right: .2em; }
+
+/* Result box — subtle tint, thin border, like dnd5e's success/failure result */
 .qa-card .qa-result {
-  --qa-c: #5b5949; --qa-bg: #e6e2d3;
+  --qa-c: #5b5949; --qa-bg: rgba(0,0,0,.05); --qa-icon: #a8a595;
+  display: grid; grid-template-columns: 2.4em 1fr 2.4em; align-items: center;
   background: var(--qa-bg); color: var(--qa-c);
-  border: 2px solid var(--qa-c); border-radius: 4px;
-  box-shadow: inset 0 0 0 1px #fff8, inset 0 0 0 2px var(--qa-c);
-  margin: 0;
+  border: 1px solid var(--qa-c); border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.4);
+  padding: .15em .25em;
 }
-.qa-card .qa-result.success { --qa-c: #2e7d2e; --qa-bg: #d3e6cd; }
-.qa-card .qa-result.failure { --qa-c: #a23030; --qa-bg: #efd6d2; }
-.qa-card .qa-result summary, .qa-card .qa-result-line {
-  display: grid; grid-template-columns: 2.2em 1fr 2.2em; align-items: center;
-  padding: .3em .4em; list-style: none; cursor: default;
-}
-.qa-card .qa-result summary { cursor: pointer; }
-.qa-card .qa-result summary::-webkit-details-marker { display: none; }
-.qa-card .qa-result summary::marker { content: ""; }
-.qa-card .qa-result-icon { font-size: 1.05em; opacity: .75; text-align: center; }
-.qa-card .qa-result-total { text-align: center; font-size: 1.75em; font-weight: 700; line-height: 1.15; }
+.qa-card .qa-result.success { --qa-c: #2f7d32; --qa-bg: #d3dfcc; --qa-icon: #93bf94; }
+.qa-card .qa-result.failure { --qa-c: #9e3030; --qa-bg: #ead5d0; --qa-icon: #c99890; }
+.qa-card .qa-result[data-qa-toggle] { cursor: pointer; }
+.qa-card .qa-result-icon { color: var(--qa-icon); text-align: center; font-size: 1.15em; }
+.qa-card .qa-result-total { text-align: center; font-size: 1.6em; font-weight: 700; line-height: 1.3; }
 .qa-card .qa-result-chev {
   align-self: stretch; display: flex; align-items: center; justify-content: center;
-  border-left: 1px solid currentColor; opacity: .55; font-size: .9em;
+  border-left: 1px solid rgba(0,0,0,.15); font-size: .95em;
 }
-.qa-card .qa-result-line .qa-result-chev { border-left: none; }
-.qa-card details[open] .qa-result-chev { transform: rotate(180deg); border-left: none; border-right: 1px solid currentColor; }
-.qa-card .qa-dice {
-  display: flex; flex-wrap: wrap; justify-content: center; gap: .3em .9em;
-  border-top: 1px dashed var(--qa-c); padding: .35em .5em .4em;
-  font-size: .9em; color: #1f1f1f;
-}
-.qa-card .qa-dice s { color: #9c7a3a; opacity: .8; }
+.qa-card .qa-result-chev:empty { border-left: none; }
+.qa-card .qa-result-chev i { transition: transform .15s ease; }
+.qa-card .qa-roll.qa-open .qa-result-chev i { transform: rotate(180deg); }

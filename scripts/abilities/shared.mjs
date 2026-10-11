@@ -153,41 +153,51 @@ function diceOf(roll) {
   return { dice, mod };
 }
 
+/** "1d10r1 + 3" → "1d10 + 3": hide dice modifiers (rerolls, keep-highest…) from players. */
+export function displayFormula(formula) {
+  return String(formula ?? "").replace(/(\d*d\d+)[a-z][a-z0-9<>=]*/gi, "$1").replace(/\s+/g, " ").trim();
+}
+
+/** dnd5e-style dice breakdown: one line per dice group (die pictures + sum), then the modifier. */
+function breakdownHtml(roll) {
+  const { dice, mod } = diceOf(roll);
+  const lines = dice.map(d => {
+    const kept = d.results.filter(x => !x.dropped).reduce((t, x) => t + x.result, 0);
+    const pics = d.results.map(x => `<span class="qa-die d${d.faces}${x.dropped ? " dropped" : ""}"${x.dropped ? ' title="Rerolled"' : ""}>${x.result}</span>`).join("");
+    return `<div class="qa-bd-line"><span class="qa-bd-dice">${pics}</span><span class="qa-bd-value">${kept}</span></div>`;
+  });
+  if (mod) lines.push(`<div class="qa-bd-line qa-bd-mod"><span></span><span class="qa-bd-value"><span class="qa-bd-sign">${mod > 0 ? "+" : "−"}</span>${Math.abs(mod)}</span></div>`);
+  return `<div class="qa-breakdown">${lines.join("")}</div>`;
+}
+
 /**
  * rows: [{ name, meta: [string], value, valueCls: "success"|"failure", roll?: Roll, total?: number }]
  *   value  → what the result box shows (e.g. "+8"); falls back to total / roll.total
- *   roll   → adds the formula bar and a click-to-open dice breakdown
+ *   roll   → adds the formula bar and a dice breakdown that opens when the box is clicked
  */
 export async function statCard({ icon, title, subtitle, badge, rows = [], summary }) {
   const rowHtml = rows.map(r => {
     const shown = r.value ?? r.total ?? r.roll?.total;
     const cls = r.valueCls || "";
-    const resultIcon = cls === "success" ? "fas fa-heart" : cls === "failure" ? "fas fa-burst" : "fas fa-dice-d20";
+    const resultIcon = cls === "success" ? "fas fa-check" : cls === "failure" ? "fas fa-burst" : "fas fa-dice-d20";
     const meta = (r.meta || []).filter(Boolean);
-    let formula = "", result;
-    if (r.roll) {
-      const { dice, mod } = diceOf(r.roll);
-      formula = `<div class="qa-formula">${escapeHtml(r.roll.formula)}</div>`;
-      const parts = dice.map(d => `<span class="qa-die-group"><b>d${d.faces}</b> ${d.results.map(x =>
-        x.dropped ? `<s title="rerolled / dropped">${x.result}</s>` : `<span>${x.result}</span>`).join(" ")}</span>`);
-      if (mod) parts.push(`<span class="qa-die-group">${mod > 0 ? "+" : "−"} ${Math.abs(mod)}</span>`);
-      parts.push(`<span class="qa-die-group">= <b>${escapeHtml(r.roll.total)}</b></span>`);
-      result = `
-        <details class="qa-result ${cls}">
-          <summary><i class="${resultIcon} qa-result-icon"></i><span class="qa-result-total">${escapeHtml(shown)}</span><i class="fas fa-chevron-down qa-result-chev"></i></summary>
-          <div class="qa-dice">${parts.join("")}</div>
-        </details>`;
-    } else if (shown !== undefined && shown !== null) {
-      result = `
-        <div class="qa-result ${cls}">
-          <div class="qa-result-line"><i class="${resultIcon} qa-result-icon"></i><span class="qa-result-total">${escapeHtml(shown)}</span><span class="qa-result-chev"></span></div>
+    let body = "";
+    if (shown !== undefined && shown !== null) {
+      body = `
+        <div class="qa-roll${r.roll ? " has-dice" : ""}">
+          ${r.roll ? `<div class="qa-formula">${escapeHtml(displayFormula(r.roll.formula))}</div>${breakdownHtml(r.roll)}` : ""}
+          <div class="qa-result ${cls}"${r.roll ? ' data-qa-toggle title="Show dice"' : ""}>
+            <i class="${resultIcon} qa-result-icon"></i>
+            <span class="qa-result-total">${escapeHtml(shown)}</span>
+            <span class="qa-result-chev">${r.roll ? '<i class="fas fa-chevron-down"></i>' : ""}</span>
+          </div>
         </div>`;
     }
     return `
       <li class="qa-roll-row">
         <div class="qa-roll-name">${escapeHtml(r.name)}</div>
         ${meta.length ? `<div class="qa-roll-meta">${meta.map(escapeHtml).join(" · ")}</div>` : ""}
-        ${formula}${result ?? ""}
+        ${body}
       </li>`;
   }).join("");
   return `
