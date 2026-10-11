@@ -229,3 +229,11 @@
   letter-spacing: .1em; text-transform: uppercase; color: #c9a84c;
   cursor: move; user-select: none;
 }
+
+/* Add Other */
+#qa-dialog .qa-other-row label { gap: .6rem; }
+#qa-dialog .qa-other-row .num-input input { width: 2.8rem; }
+#qa-dialog .qa-other-sub { margin-left: 1.2rem; }
+#qa-dialog .qa-other-sub label span:first-child { color: #d4d0c8; }
+#qa-dialog .qa-other-summary { color: #c9a84c; font-style: normal; font-family: 'JetBrains Mono', monospace; font-size: .75rem; }
+#qa-dialog .qa-apply-row .qa-tag { white-space: nowrap; }

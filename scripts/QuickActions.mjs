@@ -14,6 +14,8 @@
 import { AddKill } from "./abilities/AddKill.mjs";
 import { AddDamage } from "./abilities/AddDamage.mjs";
 import { AddHealing } from "./abilities/AddHealing.mjs";
+import { TakeDamage } from "./abilities/TakeDamage.mjs";
+import { AddOther } from "./abilities/AddOther.mjs";
 import { Healer } from "./abilities/Healer.mjs";
 import { LayOnHands } from "./abilities/LayOnHands.mjs";
 import { MODULE_ID, escapeHtml, partyCharacters } from "./abilities/shared.mjs";
@@ -23,7 +25,7 @@ const SOCKET = `module.${MODULE_ID}`;
 export const QUICK_ACTIONS_TOOL = "stats-quick-actions";
 
 // Always shown, in this order, for every character
-const GENERAL = [AddKill, AddDamage, AddHealing];
+const GENERAL = [AddKill, AddDamage, AddHealing, TakeDamage, AddOther];
 // Shown when the character's sheet has them; listed alphabetically
 const ABILITIES = [Healer, LayOnHands];
 

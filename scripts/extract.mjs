@@ -208,6 +208,27 @@ export function extractMessage(message, ctx) {
       addOutcome(who, "damage", true, "manual", alias, Number(dmg.amount), { detail: dmg.type || null, item });
     }
     if (abilityUse.kill) addOutcome(who, "kill", true, "manual", alias, 1, { item });
+
+    // Take Damage → damage taken (detail = damage type)
+    const taken = abilityUse.taken;
+    if (taken && Number(taken.amount) > 0) {
+      addOutcome(who, "damage_taken", true, "manual", alias, Number(taken.amount), { detail: taken.type || null });
+    }
+
+    // Add Other → one attack / save outcome per count (so hit % and save %
+    // include them), tagged detail "manual" so the server can also add them to
+    // midi-qol's attack / save totals; crits, fumbles and the biggest hit as amounts.
+    const other = abilityUse.other;
+    if (other) {
+      const n = (v) => Math.max(0, Math.min(500, Math.floor(Number(v)) || 0));
+      const hits = n(other.hits), attacks = Math.max(n(other.attacks), hits);
+      for (let i = 0; i < attacks; i++) addOutcome(who, "attack", i < hits, `other${i}`, alias, null, { detail: "manual" });
+      for (let i = 0; i < n(other.saveSuccess); i++) addOutcome(who, "save", true, `otherS${i}`, alias, null, { detail: "manual" });
+      for (let i = 0; i < n(other.saveFail); i++) addOutcome(who, "save", false, `otherF${i}`, alias, null, { detail: "manual" });
+      if (n(other.crits)) addOutcome(who, "crit", true, "other", alias, n(other.crits));
+      if (n(other.fumbles)) addOutcome(who, "fumble", true, "other", alias, n(other.fumbles));
+      if (hits && n(other.maxHit)) addOutcome(who, "max_hit", true, "other", alias, n(other.maxHit));
+    }
   }
 
   // ── Our skill-check cards ──────────────────────────────────────────────────

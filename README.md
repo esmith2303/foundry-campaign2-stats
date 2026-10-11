@@ -46,6 +46,8 @@ Always at the top, for every character:
 | Add Kill | Confirm → records a kill for the character. Stats only. |
 | Add Damage | Optional weapon or spell, a set amount or a dice roll (dice buttons + modifier, or type a formula), damage type (defaults to the weapon's, overridable). Stats only — applied to nobody. |
 | Add Healing | Pick a PC (or "None" for stats only) and a set amount or dice roll; the PC is healed (never past max HP). |
+| Take Damage | A set amount or dice roll, optional damage type, and "Apply to character sheet" (on by default). On: the amount comes straight off HP (temp HP first; resistances, vulnerabilities and immunities are ignored). Off: stats only, for damage already on the sheet. |
+| Add Other | Stats only. +/− counts of attacks, hits (plus the biggest hit's damage, for Max Hit), crits, fumbles, saves passed and saves failed. Hits and fumbles count as attacks and crits as hits, so the bigger counts follow them up. |
 
 Then the character's sheet abilities, alphabetically:
 
@@ -57,7 +59,11 @@ Then the character's sheet abilities, alphabetically:
 Stats: heals count as heals (each Healer use separately) and their amounts are
 added to total healing; manual damage is added to total damage, max hit, its
 damage type and its weapon; manual kills are added to kills (and the weapon,
-if one was chosen). Dice rolled in these actions count in the dice stats.
+if one was chosen). Damage taken is added to damage taken (and its type).
+Add Other's attacks and saves count in hit % and save % and are added to the
+attack / save totals; its crits, fumbles and biggest hit are added to crits,
+fumbles and max hit. Dice rolled in these actions count in the dice stats,
+except Take Damage's (those are the enemy's dice).
 
 To add one: create `scripts/abilities/<Name>.mjs` (see `LayOnHands.mjs`) and
 add it to `ABILITIES` (sheet abilities) or `GENERAL` (always shown) in

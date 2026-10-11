@@ -135,7 +135,7 @@ async function migrateUp() {
       t.timestamp("occurred_at").notNullable();
       t.string("actor_id", 100).notNullable();
       t.string("actor_name", 255).nullable();
-      t.string("outcome_type", 30).notNullable(); // attack, save, check, death, heal
+      t.string("outcome_type", 30).notNullable(); // attack, save, check, death, heal, damage, kill, damage_taken, crit, fumble, max_hit
       t.boolean("success").notNullable();
       t.string("event_key", 200).notNullable();
       t.integer("amount").nullable();             // e.g. HP healed / damage dealt via a Quick Action
@@ -248,6 +248,17 @@ async function manualTotals(type, session, req, groupBy = []) {
   q = applyRange(q, await sessionRange(session));
   q = applyExcludes(q, req.query.exclude, req.query.excludeWorlds);
   return (await q).map(r => ({ ...r, amount: Number(r.amount) || 0, max_amount: Number(r.max_amount) || 0, n: Number(r.n) || 0 }));
+}
+
+// Attacks / saves added with "Add Other" are real outcome rows (so they count
+// in hit % and save %) tagged detail = "manual"; midi-qol never saw them, so
+// they're also added to its attack / save totals. → [{actor_name, success, n}]
+async function manualCounts(type, session, req) {
+  let q = db("chat_outcomes").select("actor_name", "success").count("* as n")
+    .where("outcome_type", type).where("detail", "manual").groupBy("actor_name", "success");
+  q = applyRange(q, await sessionRange(session));
+  q = applyExcludes(q, req.query.exclude, req.query.excludeWorlds);
+  return (await q).map(r => ({ ...r, success: r.success === true || r.success === 1 || r.success === "1" || r.success === "t", n: Number(r.n) || 0 }));
 }
 
 app.get("/api/health", (_req, res) => res.json({ status: "ok", db: DB_CLIENT }));
@@ -427,20 +438,36 @@ app.get("/api/summary", authMiddleware, async (req, res) => {
 
     // Quick Actions (Lay on Hands, Healer, Add Healing/Damage/Kill) never go
     // through midi-qol, so add them from the chat log for the same range.
-    const [heal, dmg, kill] = await Promise.all([
+    const [heal, dmg, kill, taken, crit, fumble, maxHit, atk, save] = await Promise.all([
       manualTotals("heal", session, req), manualTotals("damage", session, req), manualTotals("kill", session, req),
+      manualTotals("damage_taken", session, req), manualTotals("crit", session, req),
+      manualTotals("fumble", session, req), manualTotals("max_hit", session, req),
+      manualCounts("attack", session, req), manualCounts("save", session, req),
     ]);
     const by = (list) => new Map(list.map(r => [r.actor_name, r]));
-    const H = by(heal), D = by(dmg), K = by(kill);
+    const H = by(heal), D = by(dmg), K = by(kill), T = by(taken), C = by(crit), F = by(fumble), M = by(maxHit);
+    const num = (v) => Number(v) || 0;
     for (const r of rows) {
-      const h = H.get(r.actor_name), d = D.get(r.actor_name), k = K.get(r.actor_name);
-      if (h) r.total_healing = (Number(r.total_healing) || 0) + h.amount;
+      const h = H.get(r.actor_name), d = D.get(r.actor_name), k = K.get(r.actor_name), t = T.get(r.actor_name);
+      const c = C.get(r.actor_name), f = F.get(r.actor_name), m = M.get(r.actor_name);
+      if (h) r.total_healing = num(r.total_healing) + h.amount;
       if (d) {
-        r.total_damage = (Number(r.total_damage) || 0) + d.amount;
-        r.max_single_hit = Math.max(Number(r.max_single_hit) || 0, d.max_amount);
+        r.total_damage = num(r.total_damage) + d.amount;
+        r.max_single_hit = Math.max(num(r.max_single_hit), d.max_amount);
       }
-      if (k) r.total_kills = (Number(r.total_kills) || 0) + k.n;
+      if (k) r.total_kills = num(r.total_kills) + k.n;
+      if (t) r.total_damage_taken = num(r.total_damage_taken) + t.amount;
+      if (c) r.total_crits = num(r.total_crits) + c.amount;
+      if (f) r.total_fumbles = num(r.total_fumbles) + f.amount;
+      if (m) r.max_single_hit = Math.max(num(r.max_single_hit), m.max_amount);
+      for (const a of atk) if (a.actor_name === r.actor_name) r.total_attacks = num(r.total_attacks) + a.n;
+      for (const sv of save) if (sv.actor_name === r.actor_name) {
+        r.total_saves = num(r.total_saves) + sv.n;
+        if (sv.success) r.total_save_success = num(r.total_save_success) + sv.n;
+        else r.total_save_fail = num(r.total_save_fail) + sv.n;
+      }
     }
+    rows.sort((x, y) => num(y.total_damage) - num(x.total_damage));
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -527,12 +554,14 @@ app.get("/api/damage-types", authMiddleware, async (req, res) => {
       .groupBy("actor_name", "category", "damage_type").orderBy("amount", "desc");
     q = applyExcludes(q, req.query.exclude, excludeWorlds);
     const rows = await q;
-    // Manual damage with a damage type counts as damage dealt of that type
-    for (const d of await manualTotals("damage", session, req, ["detail"])) {
-      if (!d.detail) continue;
-      const row = rows.find(r => r.actor_name === d.actor_name && r.category === "dealt" && r.damage_type === d.detail);
-      if (row) row.amount = (Number(row.amount) || 0) + d.amount;
-      else rows.push({ actor_name: d.actor_name, category: "dealt", damage_type: d.detail, amount: d.amount });
+    // Manual damage dealt / taken with a damage type counts towards that type
+    for (const [type, category] of [["damage", "dealt"], ["damage_taken", "taken"]]) {
+      for (const d of await manualTotals(type, session, req, ["detail"])) {
+        if (!d.detail) continue;
+        const row = rows.find(r => r.actor_name === d.actor_name && r.category === category && r.damage_type === d.detail);
+        if (row) row.amount = (Number(row.amount) || 0) + d.amount;
+        else rows.push({ actor_name: d.actor_name, category, damage_type: d.detail, amount: d.amount });
+      }
     }
     rows.sort((x, y) => (Number(y.amount) || 0) - (Number(x.amount) || 0));
     res.json(rows);
