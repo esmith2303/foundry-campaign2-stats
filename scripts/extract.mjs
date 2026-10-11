@@ -112,12 +112,14 @@ export function extractMessage(message, ctx) {
   };
 
   const outcomes = [];
-  const addOutcome = (actorId, type, success, source, fallbackName, amount = null) => {
+  const addOutcome = (actorId, type, success, source, fallbackName, amount = null, extra = {}) => {
     if (!tracked(actorId) || !type || typeof success !== "boolean") return;
     outcomes.push({
       actorId, actorName: nameOf(actorId, fallbackName), type, success,
       key: `${messageId}:${actorId}:${type}:${source}`,
       amount: Number.isFinite(amount) ? amount : null,
+      detail: extra.detail ?? null,      // e.g. damage type
+      item: extra.item ?? null,          // weapon / spell / feature name
     });
   };
 
@@ -191,10 +193,21 @@ export function extractMessage(message, ctx) {
     addOutcome(e.actorid, type, e.passed, "monks", e.realname || e.name);
   }
 
-  // ── Our Quick Actions cards (e.g. Lay on Hands) ───────────────────────────
-  // One heal per use; the amount is added to the character's total healing.
-  if (abilityUse?.actorId && Number(abilityUse.healing) > 0) {
-    addOutcome(abilityUse.actorId, "heal", true, "ability", message.speaker?.alias, Number(abilityUse.healing));
+  // ── Our Quick Actions cards ("+" button) ──────────────────────────────────
+  // heals:  one heal per entry, amount added to total healing (Lay on Hands,
+  //         Add Healing, Healer kit uses). Older cards used a single `healing`.
+  // damage: manual damage, added to total damage / damage type / item.
+  // kill:   manual kill, added to kills.
+  if (abilityUse?.actorId) {
+    const who = abilityUse.actorId, alias = message.speaker?.alias, item = abilityUse.itemName ?? null;
+    const heals = Array.isArray(abilityUse.heals) ? abilityUse.heals
+                : Number(abilityUse.healing) > 0 ? [Number(abilityUse.healing)] : [];
+    heals.forEach((amt, i) => addOutcome(who, "heal", true, i ? `ability${i}` : "ability", alias, Math.max(0, Number(amt) || 0), { item }));
+    const dmg = abilityUse.damage;
+    if (dmg && Number(dmg.amount) > 0) {
+      addOutcome(who, "damage", true, "manual", alias, Number(dmg.amount), { detail: dmg.type || null, item });
+    }
+    if (abilityUse.kill) addOutcome(who, "kill", true, "manual", alias, 1, { item });
   }
 
   // ── Our skill-check cards ──────────────────────────────────────────────────
@@ -276,7 +289,7 @@ export async function uploadEvents({ url, apiKey, worldId, worldName, results, c
       worldId, worldName,
       messages: chunk.map(r => ({ id: r.messageId, ts: r.timestamp })),
       dice: chunk.flatMap(r => r.dice.map(d => ({ m: r.messageId, a: d.actorId, n: d.actorName, d: d.dieType, f: d.face, c: d.count }))),
-      outcomes: chunk.flatMap(r => r.outcomes.map(o => ({ m: r.messageId, a: o.actorId, n: o.actorName, t: o.type, s: o.success, k: o.key, v: o.amount ?? null }))),
+      outcomes: chunk.flatMap(r => r.outcomes.map(o => ({ m: r.messageId, a: o.actorId, n: o.actorName, t: o.type, s: o.success, k: o.key, v: o.amount ?? null, d: o.detail ?? null, i: o.item ?? null }))),
     };
     const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
     if (!res.ok) {

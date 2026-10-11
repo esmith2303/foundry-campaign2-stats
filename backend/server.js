@@ -138,15 +138,25 @@ async function migrateUp() {
       t.string("outcome_type", 30).notNullable(); // attack, save, check, death, heal
       t.boolean("success").notNullable();
       t.string("event_key", 200).notNullable();
-      t.integer("amount").nullable();             // e.g. HP healed by a Quick Action
+      t.integer("amount").nullable();             // e.g. HP healed / damage dealt via a Quick Action
+      t.string("detail", 60).nullable();          // e.g. damage type
+      t.string("item_name", 255).nullable();      // weapon / spell / feature used
       t.unique(["world_id", "event_key"]);
       t.index(["world_id", "message_id"]);
       t.index(["occurred_at"]);
     });
     console.log("Created table chat_outcomes");
-  } else if (!(await db.schema.hasColumn("chat_outcomes", "amount"))) {
-    await db.schema.alterTable("chat_outcomes", (t) => { t.integer("amount").nullable(); });
-    console.log("Added amount column to chat_outcomes");
+  } else {
+    for (const [col, add] of [
+      ["amount",    (t) => t.integer("amount").nullable()],
+      ["detail",    (t) => t.string("detail", 60).nullable()],
+      ["item_name", (t) => t.string("item_name", 255).nullable()],
+    ]) {
+      if (!(await db.schema.hasColumn("chat_outcomes", col))) {
+        await db.schema.alterTable("chat_outcomes", add);
+        console.log(`Added ${col} column to chat_outcomes`);
+      }
+    }
   }
 }
 
@@ -228,6 +238,18 @@ function chunks(arr, n) {
   return out;
 }
 
+// Totals from Quick Actions ("+" button) for a session range: manual kills,
+// manual damage and healing never go through midi-qol, so they're added on top
+// of its numbers. type: "heal" | "damage" | "kill"; groupBy: extra columns.
+async function manualTotals(type, session, req, groupBy = []) {
+  let q = db("chat_outcomes").select("actor_name", ...groupBy)
+    .sum("amount as amount").max("amount as max_amount").count("* as n")
+    .where("outcome_type", type).groupBy("actor_name", ...groupBy);
+  q = applyRange(q, await sessionRange(session));
+  q = applyExcludes(q, req.query.exclude, req.query.excludeWorlds);
+  return (await q).map(r => ({ ...r, amount: Number(r.amount) || 0, max_amount: Number(r.max_amount) || 0, n: Number(r.n) || 0 }));
+}
+
 app.get("/api/health", (_req, res) => res.json({ status: "ok", db: DB_CLIENT }));
 
 // Body: { worldId, worldName, messages: [{id, ts}], dice: [{m,a,n,d,f,c}], outcomes: [{m,a,n,t,s,k}] }
@@ -259,7 +281,8 @@ app.post("/api/chat-events", authMiddleware, async (req, res) => {
     seenKeys.add(o.k);
     const amount = o.v === null || o.v === undefined || !Number.isFinite(Number(o.v)) ? null : Math.round(Number(o.v));
     outcomeRows.push({ world_id: worldId, message_id: String(o.m), occurred_at: at, actor_id: String(o.a),
-                       actor_name: o.n ?? null, outcome_type: String(o.t), success: o.s, event_key: String(o.k).slice(0, 200), amount });
+                       actor_name: o.n ?? null, outcome_type: String(o.t), success: o.s, event_key: String(o.k).slice(0, 200), amount,
+                       detail: o.d ? String(o.d).slice(0, 60) : null, item_name: o.i ? String(o.i).slice(0, 255) : null });
   }
 
   try {
@@ -402,16 +425,21 @@ app.get("/api/summary", authMiddleware, async (req, res) => {
     q = applyExcludes(q, req.query.exclude, excludeWorlds);
     const rows = await q;
 
-    // Healing from Quick Actions (e.g. Lay on Hands) never goes through midi-qol,
-    // so add it from the chat log for the same session (or all time).
-    let hq = db("chat_outcomes").select("actor_name").sum("amount as healing")
-      .where("outcome_type", "heal").whereNotNull("amount").groupBy("actor_name");
-    hq = applyRange(hq, await sessionRange(session));
-    hq = applyExcludes(hq, req.query.exclude, excludeWorlds);
-    const extra = new Map((await hq).map(r => [r.actor_name, Number(r.healing) || 0]));
+    // Quick Actions (Lay on Hands, Healer, Add Healing/Damage/Kill) never go
+    // through midi-qol, so add them from the chat log for the same range.
+    const [heal, dmg, kill] = await Promise.all([
+      manualTotals("heal", session, req), manualTotals("damage", session, req), manualTotals("kill", session, req),
+    ]);
+    const by = (list) => new Map(list.map(r => [r.actor_name, r]));
+    const H = by(heal), D = by(dmg), K = by(kill);
     for (const r of rows) {
-      const add = extra.get(r.actor_name);
-      if (add) r.total_healing = (Number(r.total_healing) || 0) + add;
+      const h = H.get(r.actor_name), d = D.get(r.actor_name), k = K.get(r.actor_name);
+      if (h) r.total_healing = (Number(r.total_healing) || 0) + h.amount;
+      if (d) {
+        r.total_damage = (Number(r.total_damage) || 0) + d.amount;
+        r.max_single_hit = Math.max(Number(r.max_single_hit) || 0, d.max_amount);
+      }
+      if (k) r.total_kills = (Number(r.total_kills) || 0) + k.n;
     }
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -461,7 +489,27 @@ app.get("/api/items", authMiddleware, async (req, res) => {
       db.raw(`SUM(${p}kills) as kills`)
     ).where("uploaded_at", ts).groupBy("actor_name", "item_name").orderBy("damage_total", "desc");
     q = applyExcludes(q, req.query.exclude, excludeWorlds);
-    res.json(await q);
+    const rows = await q;
+    // Manual damage / kills recorded against a weapon, spell or feature
+    const [dmg, kill] = await Promise.all([
+      manualTotals("damage", session, req, ["item_name"]), manualTotals("kill", session, req, ["item_name"]),
+    ]);
+    const find = (actor, item) => {
+      let row = rows.find(r => r.actor_name === actor && r.item_name === item);
+      if (!row) { row = { actor_name: actor, item_name: item, num_attacks: 0, damage_total: 0, num_crits: 0, max_damage: 0, kills: 0 }; rows.push(row); }
+      return row;
+    };
+    for (const d of dmg) if (d.item_name) {
+      const row = find(d.actor_name, d.item_name);
+      row.damage_total = (Number(row.damage_total) || 0) + d.amount;
+      row.max_damage = Math.max(Number(row.max_damage) || 0, d.max_amount);
+    }
+    for (const k of kill) if (k.item_name) {
+      const row = find(k.actor_name, k.item_name);
+      row.kills = (Number(row.kills) || 0) + k.n;
+    }
+    rows.sort((x, y) => (Number(y.damage_total) || 0) - (Number(x.damage_total) || 0));
+    res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -478,7 +526,16 @@ app.get("/api/damage-types", authMiddleware, async (req, res) => {
       .sum("amount as amount").where("scope", scope).where("uploaded_at", ts)
       .groupBy("actor_name", "category", "damage_type").orderBy("amount", "desc");
     q = applyExcludes(q, req.query.exclude, excludeWorlds);
-    res.json(await q);
+    const rows = await q;
+    // Manual damage with a damage type counts as damage dealt of that type
+    for (const d of await manualTotals("damage", session, req, ["detail"])) {
+      if (!d.detail) continue;
+      const row = rows.find(r => r.actor_name === d.actor_name && r.category === "dealt" && r.damage_type === d.detail);
+      if (row) row.amount = (Number(row.amount) || 0) + d.amount;
+      else rows.push({ actor_name: d.actor_name, category: "dealt", damage_type: d.detail, amount: d.amount });
+    }
+    rows.sort((x, y) => (Number(y.amount) || 0) - (Number(x.amount) || 0));
+    res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -504,6 +561,7 @@ app.get("/api/outcomes", authMiddleware, async (req, res) => {
     let q = db("chat_outcomes").select("actor_name", "outcome_type",
         db.raw("SUM(CASE WHEN success THEN 1 ELSE 0 END) as success_count"),
         db.raw("SUM(CASE WHEN success THEN 0 ELSE 1 END) as failure_count"))
+      .whereIn("outcome_type", ["attack", "save", "check", "death", "heal"])   // kills/damage go into the totals instead
       .groupBy("actor_name", "outcome_type").orderBy("actor_name").orderBy("outcome_type");
     q = applyRange(q, await sessionRange(session));
     q = applyExcludes(q, req.query.exclude, excludeWorlds);

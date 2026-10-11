@@ -29,22 +29,39 @@ Foundry (GM clicks ☁↑ Upload)
 | Saves | Each target's `saved` result on any card (e.g. a monster's spell), Monk's TokenBar requests with a DC, standalone save rolls with a DC |
 | Checks | Skill-check cards, Monk's TokenBar requests with a DC, standalone checks with a DC |
 | Death saves | Death save rolls (≥10 or a natural 20) |
-| Heals | PC uses of a healing activity, plus Quick Action heals (e.g. Lay on Hands, with the amount healed) |
+| Heals | PC uses of a healing activity, plus "+" button heals (Lay on Hands, Healer, Add Healing — with amounts) |
 
 Only player characters are tracked.
 
 ## Abilities ("+" toolbar button)
 
-Every player gets a **+** button in the token controls. It lists the supported
-abilities found on their character's sheet and runs them for them. Changes to
-other characters are applied by the GM's client (the GM must be logged in).
+Every player gets a **+** button in the token controls. Changes to other
+characters are applied by the GM's client (the GM must be logged in). Every
+action posts a chat card, which is what the stats are read from.
 
-| Ability | What it does |
-|---------|--------------|
-| Lay on Hands | Any character with a "Lay on Hands" feature that has a uses pool. Split the pool across party members and/or "Other"; heals the PCs (never past max HP, and only what's actually healed is spent), spends the pool, and posts a chat card. Counted as a heal on the dashboard, and the amount is added to the character's total healing. |
+Always at the top, for every character:
+
+| Action | What it does |
+|--------|--------------|
+| Add Kill | Confirm → records a kill for the character. Stats only. |
+| Add Damage | Optional weapon/spell/feature, a set amount or a dice roll (dice buttons + modifier, or type a formula), damage type (defaults to the weapon's, overridable). Stats only — applied to nobody. |
+| Add Healing | Pick a PC (or "Other", stats only) and a set amount or dice roll; the PC is healed (never past max HP). |
+
+Then the character's sheet abilities, alphabetically:
+
+| Ability | Needs | What it does |
+|---------|-------|--------------|
+| Healer | Healer feat + a Healer's Kit with uses | Battle Medic: each use spends one kit use and one of the patient's hit dice (largest first); rolls that die + the healer's proficiency bonus. 1s are rerolled once (toggle) without spending another die or kit use. Several uses across several PCs in one go. |
+| Lay on Hands | A "Lay on Hands" feature with a uses pool | Split the pool across PCs and/or "Other"; heals (never past max HP; only what's healed is spent) and spends the pool on the sheet. |
+
+Stats: heals count as heals (each Healer use separately) and their amounts are
+added to total healing; manual damage is added to total damage, max hit, its
+damage type and its weapon; manual kills are added to kills (and the weapon,
+if one was chosen). Dice rolled in these actions count in the dice stats.
 
 To add one: create `scripts/abilities/<Name>.mjs` (see `LayOnHands.mjs`) and
-add it to `ABILITIES` in `scripts/QuickActions.mjs`.
+add it to `ABILITIES` (sheet abilities) or `GENERAL` (always shown) in
+`scripts/QuickActions.mjs`.
 
 ## Backfilling / correcting from a chat export
 

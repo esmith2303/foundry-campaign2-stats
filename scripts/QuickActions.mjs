@@ -8,17 +8,25 @@
  *
  * To add an ability: create scripts/abilities/<Name>.mjs exporting an object
  * like LayOnHands (id, label, icon, findItem, summary, renderPanel, gmActions)
- * and add it to ABILITIES below.
+ * and add it to ABILITIES below. Always-available actions (no sheet item) set
+ * `general: true` and go in GENERAL.
  */
+import { AddKill } from "./abilities/AddKill.mjs";
+import { AddDamage } from "./abilities/AddDamage.mjs";
+import { AddHealing } from "./abilities/AddHealing.mjs";
+import { Healer } from "./abilities/Healer.mjs";
 import { LayOnHands } from "./abilities/LayOnHands.mjs";
 import { MODULE_ID, escapeHtml, partyCharacters } from "./abilities/shared.mjs";
 
 const SOCKET = `module.${MODULE_ID}`;
 export const QUICK_ACTIONS_TOOL = "stats-quick-actions";
 
-const ABILITIES = [LayOnHands];
+// Always shown, in this order, for every character
+const GENERAL = [AddKill, AddDamage, AddHealing];
+// Shown when the character's sheet has them; listed alphabetically
+const ABILITIES = [Healer, LayOnHands];
 
-const GM_HANDLERS = Object.assign({}, ...ABILITIES.map(a => a.gmActions || {}));
+const GM_HANDLERS = Object.assign({}, ...[...GENERAL, ...ABILITIES].map(a => a.gmActions || {}));
 const pending = new Map();   // requestId → { resolve, reject, timer }
 
 // ── Setup ────────────────────────────────────────────────────────────────────
@@ -134,7 +142,9 @@ export function openQuickActions() {
   let caster = casters.find(c => ABILITIES.some(ab => ab.findItem(c))) ?? casters[0];
 
   function showList() {
-    const found = ABILITIES.map(a => ({ a, item: a.findItem(caster) })).filter(x => x.item);
+    const found = ABILITIES.map(a => ({ a, item: a.findItem(caster) }))
+      .filter(x => x.item)
+      .sort((x, y) => x.item.name.localeCompare(y.item.name));
 
     const casterField = casters.length > 1 ? `
       <div class="field">
@@ -150,20 +160,26 @@ export function openQuickActions() {
         </div>
       </div>` : "";
 
+    const abilityRow = (id, icon, name, tag) => `
+      <div class="player-row qa-ability-row">
+        <label class="qa-ability-label"><i class="${icon} qa-ability-icon"></i><span>${escapeHtml(name)}</span></label>
+        <span class="qa-tag">${escapeHtml(tag)}</span>
+        <button type="button" class="btn primary qa-use" data-ability="${id}">Use</button>
+      </div>`;
+    const generalRows = GENERAL.map(a => abilityRow(a.id, a.icon, a.label, a.hint || "")).join("");
     const abilityRows = found.length
-      ? found.map(({ a, item }) => `
-          <div class="player-row qa-ability-row">
-            <label class="qa-ability-label"><i class="${a.icon} qa-ability-icon"></i><span>${escapeHtml(item.name)}</span></label>
-            <span class="qa-tag">${escapeHtml(a.summary(caster, item))}</span>
-            <button type="button" class="btn primary qa-use" data-ability="${a.id}">Use</button>
-          </div>`).join("")
-      : `<div class="player-row qa-empty">No supported abilities on ${escapeHtml(caster.name)}'s sheet yet (supported: ${ABILITIES.map(a => a.label).join(", ")}).</div>`;
+      ? found.map(({ a, item }) => abilityRow(a.id, a.icon, item.name, a.summary(caster, item))).join("")
+      : `<div class="player-row qa-empty">No supported abilities on ${escapeHtml(caster.name)}'s sheet yet (supported: ${ABILITIES.map(a => a.label).sort().join(", ")}).</div>`;
 
     dialog.innerHTML = `
       <div class="title">Abilities</div>
       ${casterField}
       <div class="field">
-        <div class="field-label">${casters.length > 1 ? "Abilities" : `${escapeHtml(caster.name)} — Abilities`}</div>
+        <div class="field-label">${casters.length > 1 ? "Record" : `${escapeHtml(caster.name)} — Record`}</div>
+        <div class="players">${generalRows}</div>
+      </div>
+      <div class="field">
+        <div class="field-label">From the sheet</div>
         <div class="players">${abilityRows}</div>
       </div>
       <div class="actions">
@@ -176,6 +192,8 @@ export function openQuickActions() {
       showList();
     }));
     dialog.querySelectorAll(".qa-use").forEach(btn => btn.addEventListener("click", () => {
+      const general = GENERAL.find(a => a.id === btn.dataset.ability);
+      if (general) return showAbility(general, null);
       const ability = ABILITIES.find(a => a.id === btn.dataset.ability);
       const item = ability?.findItem(caster);
       if (ability && item) showAbility(ability, item);
