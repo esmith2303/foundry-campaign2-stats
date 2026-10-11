@@ -69,10 +69,16 @@ The GM gets a **store** button in the token controls (players don't).
 
 - **Shops** list: every saved shop with Edit / Visit / Delete, and New Shop.
 - **Editing a shop** (a floating panel — move it by its title; the rest of the
-  screen stays usable): set the shop's name, drag items in from a compendium,
+  screen stays usable; an item compendium opens beside it automatically, and
+  you can switch compendium from the panel): set the shop's name, drag items in from a compendium,
   the Items sidebar or a character sheet (price comes from the item), or add a
   custom item (0 gp). Name, price, coin and stock are editable; leave stock
-  empty for unlimited. Shops are saved in the world for next time.
+  empty for unlimited. The chevron on each item opens its details: type, kind
+  (potion, spell scroll, martial weapon…), rarity, charges, a damage or healing
+  effect, and description. "Open full item sheet" turns it into a real item
+  (Items sidebar › Shop Items) edited with dnd5e's own sheet; the shop picks up
+  changes on save. Saving checks every item is valid for dnd5e. Shops are saved
+  in the world for next time.
 - **Visit** opens the shop for every player who has a character (and the GM).
   Players pick who's buying, quantities and — if they haggle — a different
   price. The GM's client checks stock and money, takes the coins (giving

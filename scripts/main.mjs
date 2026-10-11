@@ -16,7 +16,23 @@ const MODULE_ID = "dnd-group-campaign-2-stats";
 Hooks.once("init", () => {
   console.log(`${MODULE_ID} | Initialising`);
   registerSettings(MODULE_ID);
+  loadStyles();
 });
+
+// Foundry 13 puts stylesheets listed in module.json into a low-priority CSS
+// layer, so the skill-check styles (added straight to the page) would win over
+// them. Adding ours the same way keeps every popup styled as intended.
+function loadStyles() {
+  const version = game.modules.get(MODULE_ID)?.version ?? "";
+  for (const file of ["styles/quick-actions.css", "styles/shop.css"]) {
+    if (document.querySelector(`link[data-qa-style="${file}"]`)) continue;
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = `${foundry.utils.getRoute(`modules/${MODULE_ID}/${file}`)}?v=${version}`;
+    link.dataset.qaStyle = file;
+    document.head.appendChild(link);
+  }
+}
 
 Hooks.once("ready", async () => {
   if (!game.modules.get("midi-qol")?.active) {

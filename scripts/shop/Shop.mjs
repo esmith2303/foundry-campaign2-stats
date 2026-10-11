@@ -16,6 +16,7 @@
 import { MODULE_ID, escapeHtml } from "../abilities/shared.mjs";
 import { registerGmAction, runAsGM, castersForUser } from "../QuickActions.mjs";
 import { COIN_CP, DENOMS, toCp, walletCp, formatCp, pay } from "./currency.mjs";
+import { detailsHtml, bindDetails, applyDetails, validateItem } from "./itemDetails.mjs";
 
 const SOCKET = `module.${MODULE_ID}`;
 export const SHOP_TOOL = "stats-shop";
@@ -74,6 +75,26 @@ function customEntry() {
 
 const priceText = (p) => `${+(+p.value).toFixed(2)} ${p.denomination}`;
 
+function plainText(html) {
+  const d = document.createElement("div");
+  d.innerHTML = String(html ?? "").replace(/<\/(p|div|li|h\d)>|<br\s*\/?>/gi, " ");
+  return (d.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 400);
+}
+
+function cleanItemData(doc) {
+  const data = doc.toObject();
+  for (const k of ["_id", "folder", "sort", "ownership", "_stats"]) delete data[k];
+  return data;
+}
+
+/** The "Shop Items" folder in the Items sidebar (made on first use). */
+async function shopFolder() {
+  const existing = game.folders?.find?.(f => f.type === "Item" && f.name === "Shop Items");
+  if (existing) return existing;
+  const Folder = CONFIG.Folder?.documentClass ?? globalThis.Folder;
+  return Folder.create({ name: "Shop Items", type: "Item" });
+}
+
 // ── Popup shell ──────────────────────────────────────────────────────────────
 
 /**
@@ -91,8 +112,10 @@ function openShell({ floating }) {
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.classList.add("shown"));
 
+  const onClose = [];   // cleanup to run when the panel closes (e.g. the compendium window)
   const onKey = (e) => { if (e.key === "Escape" && !e.target.closest?.("input, select, textarea")) close(); };
   function close() {
+    onClose.splice(0).forEach(f => { try { f(); } catch {} });
     document.removeEventListener("keydown", onKey);
     overlay.classList.remove("shown");
     setTimeout(() => overlay.remove(), 200);
@@ -101,6 +124,10 @@ function openShell({ floating }) {
   if (!floating) overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
 
   if (floating) {
+    // Set in code so no stylesheet can bring the dark backdrop back: the
+    // overlay is see-through and click-through; only the panel catches clicks.
+    Object.assign(overlay.style, { background: "transparent", pointerEvents: "none" });
+    Object.assign(dialog.style, { pointerEvents: "auto", position: "fixed", left: "110px", top: "70px" });
     dialog.addEventListener("mousedown", (e) => {
       const handle = e.target.closest(".qa-drag-handle");
       if (!handle) return;
@@ -116,14 +143,45 @@ function openShell({ floating }) {
       e.preventDefault();
     });
   }
-  return { overlay, dialog, close };
+  return { overlay, dialog, close, onClose };
+}
+
+// ── Compendium helper (GM editor) ────────────────────────────────────────────
+
+const PACK_KEY = `${MODULE_ID}.shopPack`;
+function itemPacks() {
+  return (game.packs?.filter?.(p => (p.documentName ?? p.metadata?.type) === "Item") ?? [])
+    .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? ""));
+}
+function defaultPack(packs) {
+  let saved = null;
+  try { saved = localStorage.getItem(PACK_KEY); } catch {}
+  return packs.find(p => p.collection === saved)
+      ?? packs.find(p => p.metadata?.packageName === game.system?.id && /(^|\.)items/i.test(p.collection))
+      ?? packs.find(p => /item|equipment/i.test(p.title ?? ""))
+      ?? packs[0] ?? null;
+}
+/** Open a compendium window and put it just to the right of the shop panel. */
+async function openPackBeside(pack, dialog) {
+  if (!pack) return null;
+  await pack.render(true);
+  const app = [...(pack.apps ?? [])][0] ?? null;
+  setTimeout(() => {
+    const r = dialog.getBoundingClientRect();
+    const width = 320;
+    const left = r.right + 12 + width <= window.innerWidth ? r.right + 12 : Math.max(0, window.innerWidth - width - 10);
+    try { app?.setPosition?.({ left, top: r.top }); } catch {}
+  }, 150);
+  return app;
 }
 
 // ── GM: shop list ────────────────────────────────────────────────────────────
 
 export function openShopManager() {
   if (!game.user.isGM) return;
-  const { dialog, close } = openShell({ floating: true });
+  const { dialog, close, onClose } = openShell({ floating: true });
+  let packApp = null;   // the compendium window we opened, closed with the panel
+  onClose.push(() => packApp?.close?.());
 
   function showList() {
     const shops = Object.values(allShops()).sort((a, b) => (a.title || "").localeCompare(b.title || ""));
@@ -167,6 +225,7 @@ export function openShopManager() {
     shop.items ??= [];
 
     const itemRow = (it) => `
+      <div class="qa-shop-entry" data-key="${it.key}">
       <div class="player-row qa-shop-item" data-key="${it.key}">
         <img class="qa-item-img" src="${escapeHtml(it.img || "icons/svg/item-bag.svg")}" alt="">
         <input type="text" class="qa-text qa-item-name" value="${escapeHtml(it.name)}" maxlength="120">
@@ -175,7 +234,10 @@ export function openShopManager() {
           <select class="qa-item-denom">${DENOMS.map(d => `<option value="${d}"${d === it.price.denomination ? " selected" : ""}>${d}</option>`).join("")}</select>
         </div>
         <input type="number" class="qa-num qa-item-stock" min="0" step="1" placeholder="∞" value="${it.stock ?? ""}" title="Stock (leave empty for unlimited)">
+        <button type="button" class="btn qa-chev" data-act="details" title="Details: type, effect, description…"><i class="fas fa-chevron-down"></i></button>
         <button type="button" class="btn qa-del" data-act="remove" title="Remove">✕</button>
+      </div>
+      ${detailsHtml(it)}
       </div>`;
 
     dialog.innerHTML = `
@@ -185,8 +247,14 @@ export function openShopManager() {
         <input type="text" class="qa-text qa-shop-title" placeholder="e.g. The Gilded Flagon" value="${escapeHtml(shop.title)}" maxlength="80">
       </div>
       <div class="field">
-        <div class="field-label qa-shop-cols"><span>Wares</span><span>Price</span><span>Stock</span><span></span></div>
+        <div class="field-label qa-shop-cols"><span>Wares</span><span>Price</span><span>Stock</span><span></span><span></span></div>
         <div class="players qa-shop-items">${shop.items.map(itemRow).join("")}</div>
+        ${itemPacks().length ? `
+        <div class="player-row qa-pack-row">
+          <span class="qa-tag">Compendium</span>
+          <select class="qa-select qa-pack">${itemPacks().map(p => `<option value="${escapeHtml(p.collection)}">${escapeHtml(p.title)}</option>`).join("")}</select>
+          <button type="button" class="btn" data-act="open-pack">Open</button>
+        </div>` : ""}
         <div class="qa-dropzone"><i class="fas fa-hand-pointer"></i> Drag items here from a compendium, the Items sidebar or a character sheet</div>
         <button type="button" class="btn qa-add-custom" data-act="custom">+ Custom item</button>
       </div>
@@ -201,8 +269,44 @@ export function openShopManager() {
     const err = dialog.querySelector(".qa-error");
     const showErr = (m) => { err.hidden = !m; err.textContent = m || ""; };
 
-    function bindRow(row) {
-      const it = shop.items.find(i => i.key === row.dataset.key);
+    // Turn an entry into a real world item and open dnd5e's own sheet for it
+    async function openSheet(it, entryEl) {
+      showErr("");
+      try {
+        let doc = it.linkUuid ? await fromUuid(it.linkUuid) : null;
+        if (!doc) {
+          applyDetails(it);
+          const data = foundry.utils.deepClone(it.data);
+          data.name = (it.name || "").trim() || "Unnamed item";
+          data.system ??= {};
+          data.system.price = { value: it.price.value, denomination: it.price.denomination };
+          data.folder = (await shopFolder())?.id ?? null;
+          const Item = CONFIG.Item?.documentClass ?? globalThis.Item;
+          doc = await Item.create(data);
+          it.linkUuid = doc.uuid;
+          delete it.details;
+          const fresh = document.createElement("div");
+          fresh.innerHTML = detailsHtml(it);
+          const det = entryEl.querySelector(".qa-item-details");
+          const panel = fresh.firstElementChild;
+          panel.hidden = det.hidden;
+          det.replaceWith(panel);
+          bindDetails(panel, it, { onSheet: () => openSheet(it, entryEl) });
+        }
+        doc.sheet?.render(true);
+      } catch (ex) { showErr(`Couldn't open the item sheet: ${ex.message}`); }
+    }
+
+    function bindRow(entryEl) {
+      const row = entryEl.querySelector(".qa-shop-item");
+      const it = shop.items.find(i => i.key === entryEl.dataset.key);
+      const chev = row.querySelector('[data-act="details"]');
+      chev.addEventListener("click", () => {
+        const panel = entryEl.querySelector(".qa-item-details");
+        panel.hidden = !panel.hidden;
+        entryEl.classList.toggle("open", !panel.hidden);
+      });
+      bindDetails(entryEl.querySelector(".qa-item-details"), it, { onSheet: () => openSheet(it, entryEl) });
       row.querySelector(".qa-item-name").addEventListener("input", (e) => { it.name = e.target.value; });
       row.querySelector(".qa-item-price").addEventListener("input", (e) => { it.price.value = Math.max(0, Number(e.target.value) || 0); });
       row.querySelector(".qa-item-denom").addEventListener("change", (e) => { it.price.denomination = e.target.value; });
@@ -212,7 +316,7 @@ export function openShopManager() {
       });
       row.querySelector('[data-act="remove"]').addEventListener("click", () => {
         shop.items = shop.items.filter(i => i !== it);
-        row.remove();
+        entryEl.remove();
       });
     }
     const addEntry = (entry) => {
@@ -221,8 +325,25 @@ export function openShopManager() {
       bindRow(list.lastElementChild);
       list.lastElementChild.querySelector(".qa-item-name").focus();
     };
-    list.querySelectorAll(".qa-shop-item").forEach(bindRow);
+    list.querySelectorAll(".qa-shop-entry").forEach(bindRow);
     dialog.querySelector(".qa-shop-title").addEventListener("input", (e) => { shop.title = e.target.value; });
+
+    // Compendium: open the remembered (or default) item compendium beside the panel
+    const packSel = dialog.querySelector(".qa-pack");
+    if (packSel) {
+      const packs = itemPacks();
+      const first = defaultPack(packs);
+      if (first) packSel.value = first.collection;
+      const openSelected = async () => {
+        const pack = game.packs.get(packSel.value);
+        try { localStorage.setItem(PACK_KEY, packSel.value); } catch {}
+        if (packApp && packApp !== [...(pack?.apps ?? [])][0]) { try { await packApp.close(); } catch {} }
+        packApp = await openPackBeside(pack, dialog);
+      };
+      packSel.addEventListener("change", openSelected);
+      dialog.querySelector('[data-act="open-pack"]').addEventListener("click", openSelected);
+      if (!packApp?.rendered) openSelected();
+    }
     dialog.querySelector('[data-act="custom"]').addEventListener("click", () => addEntry(customEntry()));
 
     // Drag & drop from compendiums, the sidebar or sheets
@@ -243,20 +364,43 @@ export function openShopManager() {
       } catch (ex) { showErr(ex.message); }
     });
 
+    // Returns the saved shop, or null (with the error shown) if an item is invalid
     async function doSave() {
+      showErr("");
       shop.title = shop.title.trim() || "Untitled shop";
-      for (const it of shop.items) {
-        it.name = (it.name || "").trim() || "Unnamed item";
-        it.data.name = it.name;
-        it.data.system ??= {};
-        it.data.system.price = { value: it.price.value, denomination: it.price.denomination };
+      try {
+        for (const it of shop.items) {
+          if (it.linkUuid) {
+            // Edited in its own sheet: that's the source of truth (the shop keeps its price)
+            const doc = await fromUuid(it.linkUuid);
+            if (doc) {
+              it.data = cleanItemData(doc);
+              it.name = doc.name; it.img = doc.img; it.type = doc.type;
+              const row = list.querySelector(`.qa-shop-item[data-key="${it.key}"]`);
+              if (row) { row.querySelector(".qa-item-name").value = doc.name; row.querySelector(".qa-item-img").src = doc.img; }
+            } else {
+              delete it.linkUuid;   // world item was deleted — keep the last copy
+            }
+          } else {
+            applyDetails(it);   // edits stay on the entry until the save succeeds
+          }
+          it.name = (it.name || "").trim() || "Unnamed item";
+          it.data.name = it.name;
+          it.data.system ??= {};
+          it.data.system.price = { value: it.price.value, denomination: it.price.denomination };
+          validateItem(it.data, it.name);
+        }
+      } catch (ex) {
+        showErr(`Not saved — ${ex.message}`);
+        return null;
       }
-      await saveShop(shop);
+      // Store without the editor-only details (they're rebuilt from the item next time)
+      await saveShop({ ...shop, items: shop.items.map(({ details, ...rest }) => rest) });
       return shop;
     }
     dialog.querySelector('[data-act="back"]').addEventListener("click", showList);
     dialog.querySelector('[data-act="save"]').addEventListener("click", async () => {
-      await doSave();
+      if (!await doSave()) return;
       ui.notifications.info(`Saved ${shop.title}.`);
       isNew = false;
       dialog.querySelector(".title").textContent = "Edit Shop";
@@ -264,6 +408,7 @@ export function openShopManager() {
     dialog.querySelector('[data-act="visit"]').addEventListener("click", async () => {
       if (!shop.items.length) return showErr("Add some wares first.");
       const saved = await doSave();
+      if (!saved) return;
       close();
       visit(saved);
     });
@@ -329,7 +474,7 @@ function openVisit(shop) {
           ${shop.items.map(it => `
             <div class="player-row qa-ware" data-key="${it.key}">
               <img class="qa-item-img" src="${escapeHtml(it.img || "icons/svg/item-bag.svg")}" alt="">
-              <label class="qa-ware-name"><span>${escapeHtml(it.name)}</span><span class="qa-hp qa-stock">${stockText(it)}</span></label>
+              <label class="qa-ware-name" title="${escapeHtml(plainText(it.data?.system?.description?.value))}"><span>${escapeHtml(it.name)}</span><span class="qa-hp qa-stock">${stockText(it)}</span></label>
               <div class="qa-price">
                 <input type="number" class="qa-num qa-ware-price" min="0" step="any" value="${+(+(price[it.key] ?? it.price.value)).toFixed(2)}" title="Haggled? Change the price — it shows on the receipt">
                 <span class="qa-denom">${it.price.denomination}</span>
@@ -457,9 +602,6 @@ async function gmBuy({ shopId, actorId, lines } = {}, user) {
   const after = pay(actor.system?.currency, totalCp);
   if (!after) throw new Error(`${actor.name} can't afford that: costs ${formatCp(totalCp)}, has ${formatCp(before)}.`);
 
-  // Money
-  await actor.update({ "system.currency": after });
-
   // Items (stack consumables/loot onto a matching item already on the sheet)
   const create = [];
   for (const b of bought) {
@@ -467,7 +609,9 @@ async function gmBuy({ shopId, actorId, lines } = {}, user) {
     if (existing) {
       await existing.update({ "system.quantity": (Number(existing.system?.quantity) || 0) + b.q });
     } else {
-      const data = foundry.utils.deepClone(b.it.data);
+      // Items edited in their own sheet: use the latest version of that item
+      const linked = b.it.linkUuid ? await fromUuid(b.it.linkUuid).catch(() => null) : null;
+      const data = linked ? cleanItemData(linked) : foundry.utils.deepClone(b.it.data);
       data.name = b.it.name;
       data.system ??= {};
       data.system.quantity = b.q;
@@ -476,6 +620,9 @@ async function gmBuy({ shopId, actorId, lines } = {}, user) {
     }
   }
   if (create.length) await actor.createEmbeddedDocuments("Item", create);
+
+  // Money (after the items, so a problem adding them never charges anyone)
+  await actor.update({ "system.currency": after });
 
   // Stock
   const stock = {};

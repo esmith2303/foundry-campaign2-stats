@@ -70,3 +70,50 @@
 .qa-card .qa-receipt-head .qa-roll-name { flex: 1; min-width: 0; }
 .qa-card .qa-receipt-amt { flex: none; font-weight: 700; font-size: 1.05em; color: #1f1f1f; }
 .qa-card .qa-was { color: #a23030; font-weight: 700; }
+
+/* Compendium picker in the editor */
+#qa-shop-dialog .qa-pack-row { gap: .5rem; margin-bottom: .4rem; }
+#qa-shop-dialog .qa-pack-row .qa-select { flex: 1; min-width: 0; height: 1.9rem; }
+#qa-shop-dialog .qa-pack-row .btn { padding: .3rem .8rem; flex: none; }
+
+/* The shared dialog styles strip borders/background from every number input;
+   give the shop's price/stock boxes theirs back (more specific + !important). */
+#qa-shop-dialog input.qa-num[type=number] {
+  background: #0a0a0f !important; border: 1px solid #2a2a3a !important;
+}
+#qa-shop-dialog input.qa-num[type=number]:focus { border-color: #8a6d2b !important; }
+#qa-shop-dialog input.qa-ware-price.edited[type=number] { border-color: #8a6d2b !important; color: #e8c65a !important; }
+
+/* Item details (chevron) */
+#qa-shop-dialog .qa-shop-entry + .qa-shop-entry { margin-top: .2rem; }
+#qa-shop-dialog .qa-shop-entry .player-row { margin: 0; }
+#qa-shop-dialog .qa-shop-cols { grid-template-columns: 1fr 9.5rem 4rem 2.1rem 2.1rem; }
+#qa-shop-dialog .qa-chev { padding: .3rem 0 !important; width: 2.1rem; flex: none; text-align: center; }
+#qa-shop-dialog .qa-chev i { transition: transform .15s ease; }
+#qa-shop-dialog .qa-shop-entry.open .qa-chev i { transform: rotate(180deg); }
+#qa-shop-dialog .qa-shop-entry.open .qa-shop-item { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-color: #8a6d2b; }
+#qa-shop-dialog .qa-item-details {
+  background: #0e0e15; border: 1px solid #8a6d2b; border-top: none; border-radius: 0 0 3px 3px;
+  padding: .6rem .65rem .55rem;
+}
+#qa-shop-dialog .qa-details-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; margin-bottom: .5rem; }
+#qa-shop-dialog .qa-details-effect { grid-template-columns: 8rem minmax(0, 1fr) 9rem; }
+#qa-shop-dialog .qa-item-details label {
+  display: flex; flex-direction: column; gap: .2rem; min-width: 0;
+  font-family: 'Cinzel', serif; font-size: .6rem; letter-spacing: .1em; text-transform: uppercase; color: #c9a84c;
+}
+#qa-shop-dialog .qa-item-details .qa-select,
+#qa-shop-dialog .qa-item-details .qa-text,
+#qa-shop-dialog .qa-item-details .qa-num {
+  width: 100%; height: 1.9rem; letter-spacing: 0; text-transform: none; font-family: 'Crimson Text', serif; font-size: .85rem;
+}
+#qa-shop-dialog .qa-item-details .qa-num { font-family: 'JetBrains Mono', monospace; text-align: left; }
+#qa-shop-dialog .qa-item-details :disabled { opacity: .4; }
+#qa-shop-dialog .qa-d-description { height: auto !important; min-height: 4.5rem; padding: .35rem .45rem !important; resize: vertical; line-height: 1.35; }
+#qa-shop-dialog .qa-details-actions { display: flex; align-items: center; justify-content: flex-end; gap: .6rem; margin-top: .5rem; }
+#qa-shop-dialog .qa-details-actions .qa-note { margin: 0; }
+#qa-shop-dialog .qa-details-actions .btn { padding: .3rem .8rem; }
+
+@media (max-width: 560px) {
+  #qa-shop-dialog .qa-details-grid, #qa-shop-dialog .qa-details-effect { grid-template-columns: 1fr 1fr; }
+}
