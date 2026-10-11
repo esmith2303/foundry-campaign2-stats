@@ -32,7 +32,11 @@ const SESSIONS_URLS = {
   prod: "http://13.223.137.11/api/sessions",
   dev:  "http://13.223.137.11/dev-api/sessions",
 };
-const API_KEY = process.env.API_KEY || "5c8ad5c84caa91fa71fa63e2cf481db2d5174e008053eb0fdc0405b6f606115c";
+const API_KEY = process.env.API_KEY;
+if (!API_KEY) {
+  console.error("✘ Set the API_KEY env var, e.g. API_KEY=$(grep ^API_KEY backend/.env | cut -d= -f2) node scripts/process-chat-export.js ...");
+  process.exit(1);
+}
 const TRACKED_FACES = [4, 6, 8, 10, 12, 20];
 
 // Args

@@ -16,10 +16,8 @@ DB_USER="foundry"
 BACKUP_DIR="$HOME/backups"
 KEEP_COUNT=14
 
-# PGPASSWORD avoids the password prompt. If you'd rather not embed it,
-# create ~/.pgpass with: localhost:5432:dnd_stats:foundry:ilovejamie
-# then chmod 600 ~/.pgpass and remove the line below.
-export PGPASSWORD="ilovejamie"
+# Password comes from ~/.pgpass (chmod 600), e.g.:
+#   localhost:5432:*:foundry:<password>
 
 mkdir -p "$BACKUP_DIR"
 TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)

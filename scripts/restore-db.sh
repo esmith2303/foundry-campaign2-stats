@@ -18,7 +18,8 @@ if [ ! -f "$BACKUP_FILE" ]; then
   exit 1
 fi
 
-export PGPASSWORD="ilovejamie"
+# Password comes from ~/.pgpass (chmod 600), e.g.:
+#   localhost:5432:*:foundry:<password>
 
 echo "═══════════════════════════════════════════════════"
 echo "  WARNING: this will DROP and replace database: $DB_NAME"
