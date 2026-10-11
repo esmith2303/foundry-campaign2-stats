@@ -28,12 +28,12 @@ async function gmApply({ actorId, targetId, amount, roll } = {}, user) {
 
   await ChatMessage.create({
     speaker: ChatMessage.getSpeaker({ actor }),
-    content: statCard({
+    content: await statCard({
       icon: "fas fa-heart", title: "Healing", subtitle: actor.name,
-      rows: [{ icon: "fas fa-heart", name: row.name,
-               tags: [r && { text: r.formula }, row.applied < row.requested && { text: "capped", cls: "dis" },
-                      row.actorId && { text: `${row.hpAfter} / ${row.hpMax}` }].filter(Boolean),
-               value: `+${row.applied}`, valueCls: "success" }],
+      rows: [{ name: row.name, value: `+${row.applied}`, valueCls: "success",
+               meta: [row.actorId && `HP ${row.hpAfter} / ${row.hpMax}`,
+                      row.applied < row.requested && `capped at full HP (${row.requested})`],
+               roll: r }],
       summary: row.actorId ? "Added manually" : "Added manually for stats — no character healed",
     }),
     rolls: r ? [r] : [],

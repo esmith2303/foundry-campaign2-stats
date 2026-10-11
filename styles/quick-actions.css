@@ -110,3 +110,52 @@
 
 /* Healer */
 #qa-dialog .checkbox-row label { gap: .45rem; }
+
+/* ── Chat cards from the "+" button ────────────────────────────────────────
+ * Header/background come from .skill-check-card (SkillCheck.mjs). Each row:
+ * name, small meta line, formula bar, then a big result box laid out like a
+ * dnd5e roll result (icon · total · chevron). Click it for the dice. */
+.qa-card .qa-rows { list-style: none; margin: 0; padding: 0; }
+.qa-card .qa-roll-row { padding: .45em .1em .55em; border-bottom: 1px solid #d8d6c8; }
+.qa-card .qa-roll-row:last-child { border-bottom: none; }
+.qa-card .qa-roll-name { font-weight: 700; font-size: 1.05em; color: #1f1f1f; overflow-wrap: break-word; }
+.qa-card .qa-roll-meta {
+  font-size: .72em; text-transform: uppercase; letter-spacing: .06em; color: #7a7770; margin: .1em 0 .35em;
+}
+
+.qa-card .qa-formula {
+  text-align: center; font-size: 1.05em; color: #1f1f1f;
+  background: rgba(255,255,255,.45); border: 1px solid #b5b3a4; border-radius: 4px;
+  padding: .25em .5em; margin-bottom: .35em;
+}
+
+.qa-card .qa-result {
+  --qa-c: #5b5949; --qa-bg: #e6e2d3;
+  background: var(--qa-bg); color: var(--qa-c);
+  border: 2px solid var(--qa-c); border-radius: 4px;
+  box-shadow: inset 0 0 0 1px #fff8, inset 0 0 0 2px var(--qa-c);
+  margin: 0;
+}
+.qa-card .qa-result.success { --qa-c: #2e7d2e; --qa-bg: #d3e6cd; }
+.qa-card .qa-result.failure { --qa-c: #a23030; --qa-bg: #efd6d2; }
+.qa-card .qa-result summary, .qa-card .qa-result-line {
+  display: grid; grid-template-columns: 2.2em 1fr 2.2em; align-items: center;
+  padding: .3em .4em; list-style: none; cursor: default;
+}
+.qa-card .qa-result summary { cursor: pointer; }
+.qa-card .qa-result summary::-webkit-details-marker { display: none; }
+.qa-card .qa-result summary::marker { content: ""; }
+.qa-card .qa-result-icon { font-size: 1.05em; opacity: .75; text-align: center; }
+.qa-card .qa-result-total { text-align: center; font-size: 1.75em; font-weight: 700; line-height: 1.15; }
+.qa-card .qa-result-chev {
+  align-self: stretch; display: flex; align-items: center; justify-content: center;
+  border-left: 1px solid currentColor; opacity: .55; font-size: .9em;
+}
+.qa-card .qa-result-line .qa-result-chev { border-left: none; }
+.qa-card details[open] .qa-result-chev { transform: rotate(180deg); border-left: none; border-right: 1px solid currentColor; }
+.qa-card .qa-dice {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: .3em .9em;
+  border-top: 1px dashed var(--qa-c); padding: .35em .5em .4em;
+  font-size: .9em; color: #1f1f1f;
+}
+.qa-card .qa-dice s { color: #9c7a3a; opacity: .8; }

@@ -133,19 +133,63 @@ export async function spendUses(item, n) {
   return item.update(update);
 }
 
-// ── Chat card (same look as the skill-check card) ────────────────────────────
+// ── Chat card ────────────────────────────────────────────────────────────────
+// Our own card style (header like the skill-check card), with each result laid
+// out like a Foundry roll: a formula bar, then a big result box (green for
+// heals, red for damage). Clicking the box opens the dice breakdown.
+
+/** [{ faces, results: [{ result, dropped }] }] and the flat modifier of a Roll. */
+function diceOf(roll) {
+  const dice = [];
+  let mod = 0, sign = 1;
+  for (const t of roll?.terms ?? []) {
+    if (t?.operator) { sign = t.operator === "-" ? -1 : 1; continue; }
+    if (t?.faces && Array.isArray(t.results)) {
+      dice.push({ faces: t.faces, results: t.results.map(r => ({ result: r.result, dropped: r.active === false || !!r.discarded })) });
+    } else if (typeof t?.number === "number" && !t?.faces) {
+      mod += sign * t.number;
+    }
+  }
+  return { dice, mod };
+}
 
 /**
- * rows: [{ icon, name, tags: [{text, cls}], value, valueCls }]
+ * rows: [{ name, meta: [string], value, valueCls: "success"|"failure", roll?: Roll, total?: number }]
+ *   value  → what the result box shows (e.g. "+8"); falls back to total / roll.total
+ *   roll   → adds the formula bar and a click-to-open dice breakdown
  */
-export function statCard({ icon, title, subtitle, badge, rows = [], summary }) {
-  const rowHtml = rows.map(r => `
-    <li class="player-row">
-      <span class="rolled-icon"><i class="${r.icon || "fas fa-circle"}"></i></span>
-      <span class="player-name">${escapeHtml(r.name)}</span>
-      ${(r.tags || []).map(t => `<span class="mode-tag ${t.cls || ""}">${escapeHtml(t.text)}</span>`).join("")}
-      ${r.value !== undefined ? `<span class="roll-status ${r.valueCls || ""}">${escapeHtml(r.value)}</span>` : ""}
-    </li>`).join("");
+export async function statCard({ icon, title, subtitle, badge, rows = [], summary }) {
+  const rowHtml = rows.map(r => {
+    const shown = r.value ?? r.total ?? r.roll?.total;
+    const cls = r.valueCls || "";
+    const resultIcon = cls === "success" ? "fas fa-heart" : cls === "failure" ? "fas fa-burst" : "fas fa-dice-d20";
+    const meta = (r.meta || []).filter(Boolean);
+    let formula = "", result;
+    if (r.roll) {
+      const { dice, mod } = diceOf(r.roll);
+      formula = `<div class="qa-formula">${escapeHtml(r.roll.formula)}</div>`;
+      const parts = dice.map(d => `<span class="qa-die-group"><b>d${d.faces}</b> ${d.results.map(x =>
+        x.dropped ? `<s title="rerolled / dropped">${x.result}</s>` : `<span>${x.result}</span>`).join(" ")}</span>`);
+      if (mod) parts.push(`<span class="qa-die-group">${mod > 0 ? "+" : "−"} ${Math.abs(mod)}</span>`);
+      parts.push(`<span class="qa-die-group">= <b>${escapeHtml(r.roll.total)}</b></span>`);
+      result = `
+        <details class="qa-result ${cls}">
+          <summary><i class="${resultIcon} qa-result-icon"></i><span class="qa-result-total">${escapeHtml(shown)}</span><i class="fas fa-chevron-down qa-result-chev"></i></summary>
+          <div class="qa-dice">${parts.join("")}</div>
+        </details>`;
+    } else if (shown !== undefined && shown !== null) {
+      result = `
+        <div class="qa-result ${cls}">
+          <div class="qa-result-line"><i class="${resultIcon} qa-result-icon"></i><span class="qa-result-total">${escapeHtml(shown)}</span><span class="qa-result-chev"></span></div>
+        </div>`;
+    }
+    return `
+      <li class="qa-roll-row">
+        <div class="qa-roll-name">${escapeHtml(r.name)}</div>
+        ${meta.length ? `<div class="qa-roll-meta">${meta.map(escapeHtml).join(" · ")}</div>` : ""}
+        ${formula}${result ?? ""}
+      </li>`;
+  }).join("");
   return `
     <div class="skill-check-card qa-card">
       <header class="card-header">
@@ -157,7 +201,7 @@ export function statCard({ icon, title, subtitle, badge, rows = [], summary }) {
         ${badge ? `<span class="dc-badge">${escapeHtml(badge)}</span>` : ""}
       </header>
       <section class="card-content">
-        ${rows.length ? `<ul class="player-list">${rowHtml}</ul>` : ""}
+        ${rowHtml ? `<ul class="qa-rows">${rowHtml}</ul>` : ""}
         ${summary ? `<div class="group-summary">${escapeHtml(summary)}</div>` : ""}
       </section>
     </div>`;

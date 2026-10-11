@@ -10,7 +10,7 @@
  *   - spends the pool on the item,
  *   - posts a chat card, which the stats extractor counts as a heal.
  */
-import { MODULE_ID, escapeHtml, partyCharacters, hpOf } from "./shared.mjs";
+import { MODULE_ID, escapeHtml, partyCharacters, hpOf, statCard } from "./shared.mjs";
 
 const ID = "lay-on-hands";
 const APPLY = "lay-on-hands.apply";
@@ -80,7 +80,7 @@ async function gmApply({ actorId, itemId, targets } = {}, user) {
 
   await ChatMessage.create({
     speaker: ChatMessage.getSpeaker({ actor }),
-    content: chatCard(item.name, actor.name, clean, before, after, max),
+    content: await chatCard(item.name, actor.name, clean, before, after, max),
     flags: { [MODULE_ID]: { abilityUse: {
       ability: ID, itemName: item.name, actorId: actor.id,
       healing: total, poolBefore: before, poolAfter: after, poolMax: max, targets: clean,
@@ -91,33 +91,16 @@ async function gmApply({ actorId, itemId, targets } = {}, user) {
 }
 
 function chatCard(itemName, casterName, results, before, after, max) {
-  // Same card structure/styles as the skill-check card (SkillCheck.mjs)
-  const rows = results.filter(r => r.applied > 0 || r.requested > 0).map(r => {
-    const tag = r.actorId ? `<span class="mode-tag">${r.hpAfter} / ${r.hpMax}</span>` : "";
-    const capped = r.applied < r.requested ? `<span class="mode-tag dis" title="${r.requested} asked; capped at full HP">capped</span>` : "";
-    return `
-      <li class="player-row">
-        <span class="rolled-icon"><i class="fas fa-heart"></i></span>
-        <span class="player-name">${escapeHtml(r.name)}</span>
-        ${capped}${tag}
-        <span class="roll-status success">+${r.applied}</span>
-      </li>`;
-  }).join("");
-  return `
-    <div class="skill-check-card qa-card">
-      <header class="card-header">
-        <span class="icon"><i class="fas fa-hand-holding-heart"></i></span>
-        <div class="title-block">
-          <div class="skill-name">${escapeHtml(itemName)}</div>
-          <div class="ability-tag">${escapeHtml(casterName)}</div>
-        </div>
-        <span class="dc-badge">Pool ${after} / ${max}</span>
-      </header>
-      <section class="card-content">
-        <ul class="player-list">${rows}</ul>
-        <div class="group-summary">${before - after} HP spent · pool ${before} → ${after}</div>
-      </section>
-    </div>`;
+  return statCard({
+    icon: "fas fa-hand-holding-heart", title: itemName, subtitle: casterName,
+    badge: `Pool ${after} / ${max}`,
+    rows: results.filter(r => r.applied > 0 || r.requested > 0).map(r => ({
+      name: r.name, value: `+${r.applied}`, valueCls: "success",
+      meta: [r.actorId ? `HP ${r.hpAfter} / ${r.hpMax}` : "not a party member",
+             r.applied < r.requested && `capped at full HP (${r.requested} asked)`],
+    })),
+    summary: `${before - after} HP spent · pool ${before} → ${after}`,
+  });
 }
 
 // ── Player side (popup panel) ────────────────────────────────────────────────

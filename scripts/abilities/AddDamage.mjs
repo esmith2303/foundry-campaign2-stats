@@ -57,11 +57,10 @@ function renderPanel(dialog, { actor, close, back }) {
       const typeLabel = types.find(t => t.key === type)?.label;
       await ChatMessage.create({
         speaker: ChatMessage.getSpeaker({ actor }),
-        content: statCard({
+        content: await statCard({
           icon: "fas fa-burst", title: "Damage", subtitle: actor.name,
-          rows: [{ icon: "fas fa-burst", name: item?.name ?? "Damage",
-                   tags: [typeLabel && { text: typeLabel }, roll && { text: roll.formula }].filter(Boolean),
-                   value: String(amount), valueCls: "failure" }],
+          rows: [{ name: item?.name ?? "Damage", meta: [typeLabel ?? "Untyped"],
+                   roll, value: String(amount), valueCls: "failure" }],
           summary: "Added manually for stats",
         }),
         rolls: roll ? [roll] : [],

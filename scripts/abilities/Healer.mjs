@@ -71,21 +71,20 @@ async function gmApply({ actorId, featId, kitId, plan, reroll = true } = {}, use
       rolls.push(roll);
       heals.push(applied);
       rows.push({
-        icon: "fas fa-kit-medical", name: target.name,
-        tags: [{ text: `d${hd.faces} ${results.join("→")} + ${prof}` },
-               ...(applied < roll.total ? [{ text: "capped", cls: "dis" }] : [])],
-        value: `+${applied}`, valueCls: "success",
+        name: target.name, value: `+${applied}`, valueCls: "success", roll,
+        meta: [`hit die d${hd.faces}`, results.length > 1 && `rerolled a 1`,
+               applied < roll.total && `capped at full HP`],
       });
     }
     if (current !== hp.value) await target.update({ "system.attributes.hp.value": current });
-    rows[rows.length - 1].tags.push({ text: `${current} / ${hp.max}` });
+    rows[rows.length - 1].meta.push(`HP ${current} / ${hp.max}`);
   }
   await spendUses(kit, totalUses);
   const kitAfter = usesLeft(kit);
 
   await ChatMessage.create({
     speaker: ChatMessage.getSpeaker({ actor }),
-    content: statCard({
+    content: await statCard({
       icon: "fas fa-kit-medical", title: feat.name, subtitle: actor.name,
       badge: `Kit ${kitAfter} left`, rows,
       summary: `${totalUses} kit use${totalUses === 1 ? "" : "s"} · ${hdSpent} hit ${hdSpent === 1 ? "die" : "dice"} spent${reroll ? " · 1s rerolled" : ""}`,
