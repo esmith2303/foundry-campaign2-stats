@@ -17,7 +17,8 @@ export function registerSettings(moduleId) {
     default: "",
   });
 
-  // Internal storage for dice roll tracking — not shown in settings UI
+  // Legacy live dice-tracking store. No longer used (stats come from the chat
+  // log at upload time); kept registered so old worlds load cleanly.
   game.settings.register(moduleId, "diceRolls", {
     scope: "world",
     config: false,

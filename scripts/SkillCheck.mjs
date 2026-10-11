@@ -874,62 +874,7 @@ async function applyRollUpdate({ messageId, actorId, total, formula, success, br
     flags: { [MODULE_ID]: { skillCheck: newState } },
   });
 
-  // Record dice + check outcome to the module's diceRolls setting so the
-  // dashboard picks it up (same store the main.mjs tracker writes to).
-  const actor = game.actors.get(actorId);
-  if (actor && breakdown) {
-    try {
-      await trackSkillCheck(actor, breakdown, success);
-    } catch (e) {
-      console.warn(`${MODULE_ID} | trackSkillCheck failed:`, e);
-    }
-  }
-}
-
-/**
- * Explicitly track a skill check's dice + outcome into the module's diceRolls
- * setting (same store that main.mjs's createChatMessage tracker writes to).
- * Only runs on the GM client to avoid races with multiple writers.
- */
-async function trackSkillCheck(actor, breakdown, success) {
-  if (!game.user.isGM) return;
-
-  const store = game.settings.get(MODULE_ID, "diceRolls") || {};
-  if (!store[actor.id]) {
-    store[actor.id] = { name: actor.name, dice: {}, outcomes: {} };
-  }
-  const data = store[actor.id];
-  if (!data.dice) data.dice = {};
-  if (!data.outcomes) data.outcomes = {};
-
-  const recordFace = (faces, value) => {
-    const k = String(faces);
-    if (!data.dice[k]) data.dice[k] = {};
-    const v = String(value);
-    data.dice[k][v] = (data.dice[k][v] || 0) + 1;
-  };
-
-  // d20 — track both kept and dropped so raw dice luck is reflected
-  if (breakdown.d20Result != null) recordFace(20, breakdown.d20Result);
-  if (breakdown.d20Dropped != null) recordFace(20, breakdown.d20Dropped);
-
-  // Bonus dice from Guidance, Bardic Inspiration, etc.
-  for (const bd of (breakdown.bonusDice || [])) {
-    const facesMatch = bd.formula?.match?.(/d(\d+)/);
-    if (!facesMatch) continue;
-    const faces = parseInt(facesMatch[1]);
-    if (![4, 6, 8, 10, 12].includes(faces)) continue;
-    for (const result of (bd.rolls || [])) {
-      recordFace(faces, result);
-    }
-  }
-
-  // Check success/failure outcome
-  if (!data.outcomes.check) data.outcomes.check = { success: 0, failure: 0 };
-  data.outcomes.check[success ? "success" : "failure"] += 1;
-
-  await game.settings.set(MODULE_ID, "diceRolls", store);
-  console.log(`${MODULE_ID} | Tracked skill check for ${actor.name}: success=${success}, d20=${breakdown.d20Result}${breakdown.d20Dropped != null ? `/${breakdown.d20Dropped}` : ""}, bonus=${(breakdown.bonusDice || []).map(b => b.formula + "=" + b.result).join(",") || "none"}`);
+  // Dice and the check outcome are read from this card at upload time (extract.mjs).
 }
 
 function escapeHtml(s) {

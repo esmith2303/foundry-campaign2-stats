@@ -1,107 +1,60 @@
-# Midi-QOL Stats Uploader
+# To Coldly Go — Campaign Stats
 
-A FoundryVTT module that collects roll data from **midi-qol** and lets the GM
-upload it to a PostgreSQL or MySQL database with a single button click.
-
----
+A FoundryVTT module (`dnd-group-campaign-2-stats`) plus a small Node/Postgres
+backend that records campaign stats and serves them to the dashboard.
 
 ## How it works
 
 ```
-midi-qol  ──(hook)──▶  StatsCollector  ──(in-memory queue)──▶  [GM clicks button]
-                                                                       │
-                                                               StatsUploader.upload()
-                                                                       │
-                                                               POST /api/roll-stats
-                                                                       │
-                                                               backend/server.js
-                                                                       │
-                                                            INSERT INTO roll_stats
+Foundry (GM clicks ☁↑ Upload)
+ ├─ chat log ──▶ scripts/extract.mjs ──▶ POST /api/chat-events ──▶ chat_dice, chat_outcomes
+ └─ midi-qol stats snapshot ─────────────▶ POST /api/roll-stats  ──▶ actor_stats, item_stats, damage_by_type
 ```
 
-Every completed roll fires the `midi-qol.RollComplete` hook. The module
-captures actor name, item name, attack total, d20 result, crit/fumble flags,
-damage, saving throws, and targets into an in-memory queue. When the GM clicks
-the toolbar button and confirms, the whole queue is sent to your backend in one
-HTTP request, then flushed.
+- **Dice, attacks, saves, checks, death saves and heals** are read from the
+  chat log at upload time by `scripts/extract.mjs`. Nothing is counted live.
+  Every event is keyed by its chat message ID, and the server replaces what it
+  has for a message whenever that message is uploaded again — so uploads are
+  idempotent and re-uploading can only correct, never double count.
+- **Damage, kills, items etc.** still come from midi-qol's own stats.
+- A **session** on the dashboard is one stats upload; dice/outcomes belong to
+  the session whose upload follows them.
 
----
+### What the extractor counts
 
-## Installation
+| Stat | Source |
+|------|--------|
+| Dice | `message.rolls` only (midi-qol's flag copies of the same rolls are ignored), every die including dropped adv/dis dice; Monk's TokenBar request rolls; skill-check card breakdowns |
+| Attacks | PC attack cards with at least one target — midi-qol's `isHit` (falls back to d20/AC) |
+| Saves | Each target's `saved` result on any card (e.g. a monster's spell), Monk's TokenBar requests with a DC, standalone save rolls with a DC |
+| Checks | Skill-check cards, Monk's TokenBar requests with a DC, standalone checks with a DC |
+| Death saves | Death save rolls (≥10 or a natural 20) |
+| Heals | PC uses of a healing activity |
 
-### 1. Install the Foundry module
+Only player characters are tracked.
 
-Copy the `midi-qol-stats-uploader/` folder (everything except `backend/`) into
-your Foundry `Data/modules/` directory so the path is:
-
-```
-Data/modules/midi-qol-stats-uploader/module.json
-```
-
-Enable it in Foundry under **Game Settings → Manage Modules**.
-
-### 2. Start the backend
+## Backfilling / correcting from a chat export
 
 ```bash
-cd backend
-npm install
-cp .env.example .env
-# Edit .env with your DB credentials and API key
-node server.js
+API_KEY=$(grep ^API_KEY backend/.env | cut -d= -f2 | tr -d '\r') \
+  node scripts/process-chat-export.mjs chat-export.json --dry-run      # check totals first
+API_KEY=$(grep ^API_KEY backend/.env | cut -d= -f2 | tr -d '\r') \
+  node scripts/process-chat-export.mjs chat-export.json                # upload (prod)
 ```
 
-The server will automatically create the `roll_stats` table on first run.
+Flags: `--target dev|prod`, `--since YYYY-MM-DD`, `--until YYYY-MM-DD`,
+`--include-npcs`, `--out events.json`. Safe to run repeatedly.
 
-### 3. Configure the module in Foundry
+## Backend
 
-Go to **Settings → Module Settings → Midi-QOL Stats Uploader** and set:
+```bash
+cd backend && npm install && cp .env.example .env   # fill in DB + API_KEY
+pm2 start server.js --name stats                    # tables are created on start
+```
 
-| Setting | Value |
-|---------|-------|
-| **API Endpoint URL** | `http://your-server:3000/api/roll-stats` |
-| **API Key** | The `API_KEY` value from your `.env` |
+Other scripts in `backend/`: `upload-file.js` (load a midi-qol JSON export),
+`clear-db.js`, `dedupe-existing.js`. DB backups: `scripts/backup-db.sh` /
+`restore-db.sh` (password from `~/.pgpass`).
 
----
-
-## The GM button
-
-A cloud-upload icon (☁ ↑) appears in the **Token Controls** toolbar on the left
-side of the canvas. Click it to see how many rolls are queued, then click
-**Upload Now** to send them.
-
----
-
-## Database schema
-
-Table: `roll_stats`
-
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | serial PK | |
-| `workflow_id` | varchar | midi-qol internal ID |
-| `recorded_at` | timestamp | when the roll happened |
-| `world_id` | varchar | Foundry world ID |
-| `actor_name` | varchar | character who rolled |
-| `item_name` | varchar | spell/weapon/ability used |
-| `has_attack` | boolean | |
-| `attack_total` | int | final attack roll value |
-| `attack_d20` | int | raw d20 result (before modifiers) |
-| `is_critical` | boolean | |
-| `is_fumble` | boolean | |
-| `damage_total` | int | |
-| `saves` | jsonb | array of `{tokenUuid, total, success}` |
-| `targets_hit` | jsonb | array of `{id, name}` |
-| `targets_missed` | jsonb | array of `{id, name}` |
-| … | | see `server.js` for full list |
-
----
-
-## Extending
-
-- **Add more fields**: edit `StatsCollector.mjs` (`#extract`) to pull extra
-  properties from the workflow, then add matching columns in `server.js`
-  (`migrateUp` + the `rows.map` block).
-- **Change trigger**: Instead of a button, call `uploader.drainAndUpload(collector)`
-  from a `Hooks.on("combatEnd", ...)` listener in `main.mjs`.
-- **Different auth**: Replace the bearer-token middleware in `server.js` with
-  whatever suits your infrastructure (JWT, IP whitelist, etc.).
+`dice_rolls` and `roll_outcomes` are the old live-tracking tables; they're no
+longer read and can be dropped once you're happy with the new numbers.

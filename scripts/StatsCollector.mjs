@@ -1,7 +1,9 @@
+import { extractAll } from "./extract.mjs";
+
 /**
  * StatsCollector
- * Reads midi-qol's live stats + our dice/outcomes tracker.
- * Returns a snapshot if EITHER source has data.
+ * - snapshot(): midi-qol's own per-actor stats (damage, kills, items…)
+ * - chatEvents(): dice / attacks / saves / checks / heals, read from the chat log
  */
 export class StatsCollector {
   #moduleId;
@@ -34,47 +36,31 @@ export class StatsCollector {
       filteredStats[id] = data;
     }
 
-    // Our dice + outcomes tracker
-    let diceRolls = {};
-    try { diceRolls = game.settings.get(this.#moduleId, "diceRolls") || {}; } catch {}
-    const filteredDice = {};
-    for (const [id, data] of Object.entries(diceRolls)) {
-      if (game.users?.get(id)) continue;
-      filteredDice[id] = data;
-    }
-
-    const hasStats = Object.keys(filteredStats).length > 0;
-    const hasDice = Object.keys(filteredDice).length > 0;
-
-    if (!hasStats && !hasDice) {
-      console.warn(`${this.#moduleId} | No stats or dice data to upload`);
-      return null;
-    }
-
     return {
       timestamp: new Date().toISOString(),
       worldId: game.world.id,
       worldName: game.world.title,
       stats: filteredStats,
-      diceRolls: filteredDice,
     };
   }
 
-  // Count of actors with ANY tracked data (midi-qol stats OR dice OR outcomes)
+  /** Every message in the chat log, run through the shared extractor. */
+  chatEvents() {
+    const ctx = {
+      isPlayerCharacter: (id) => !!game.actors.get(id)?.hasPlayerOwner,
+      actorName: (id, fallback) => game.actors.get(id)?.name ?? fallback,
+      // Token UUIDs without an "Actor." part (unlinked tokens)
+      resolveActorId: (uuid) => {
+        try { const doc = fromUuidSync(uuid); return doc?.actor?.id ?? (doc?.documentName === "Actor" ? doc.id : null); }
+        catch { return null; }
+      },
+    };
+    return extractAll(game.messages.contents.map(m => m.toObject()), ctx);
+  }
+
+  // Count of actors with midi-qol stats this session
   get pendingCount() {
-    const actorIds = new Set();
-
     const stats = globalThis.MidiQOL?.gameStats?.currentStats ?? {};
-    for (const [id] of Object.entries(stats)) {
-      if (!game.users?.get(id)) actorIds.add(id);
-    }
-
-    let diceRolls = {};
-    try { diceRolls = game.settings.get(this.#moduleId, "diceRolls") || {}; } catch {}
-    for (const [id] of Object.entries(diceRolls)) {
-      if (!game.users?.get(id)) actorIds.add(id);
-    }
-
-    return actorIds.size;
+    return Object.keys(stats).filter(id => !game.users?.get(id)).length;
   }
 }

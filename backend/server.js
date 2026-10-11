@@ -106,6 +106,44 @@ async function migrateUp() {
     });
     console.log("Created table roll_outcomes");
   }
+
+  // ── Per-chat-message events (replace dice_rolls / roll_outcomes) ──────────
+  // One set of rows per chat message. Re-uploading a message deletes and
+  // re-inserts its rows, so uploads are idempotent and backfills just correct.
+  // dice_rolls / roll_outcomes above are legacy and no longer read.
+  if (!(await db.schema.hasTable("chat_dice"))) {
+    await db.schema.createTable("chat_dice", (t) => {
+      t.increments("id").primary();
+      t.string("world_id", 100).notNullable();
+      t.string("message_id", 64).notNullable();
+      t.timestamp("occurred_at").notNullable();
+      t.string("actor_id", 100).notNullable();
+      t.string("actor_name", 255).nullable();
+      t.integer("die_type").notNullable();
+      t.integer("face_value").notNullable();
+      t.integer("count").notNullable();
+      t.index(["world_id", "message_id"]);
+      t.index(["occurred_at"]);
+    });
+    console.log("Created table chat_dice");
+  }
+  if (!(await db.schema.hasTable("chat_outcomes"))) {
+    await db.schema.createTable("chat_outcomes", (t) => {
+      t.increments("id").primary();
+      t.string("world_id", 100).notNullable();
+      t.string("message_id", 64).notNullable();
+      t.timestamp("occurred_at").notNullable();
+      t.string("actor_id", 100).notNullable();
+      t.string("actor_name", 255).nullable();
+      t.string("outcome_type", 30).notNullable(); // attack, save, check, death, heal
+      t.boolean("success").notNullable();
+      t.string("event_key", 200).notNullable();
+      t.unique(["world_id", "event_key"]);
+      t.index(["world_id", "message_id"]);
+      t.index(["occurred_at"]);
+    });
+    console.log("Created table chat_outcomes");
+  }
 }
 
 function mapCounters(c, p) {
@@ -162,7 +200,79 @@ async function getLatestTimestamp(excludeWorlds) {
   return row?.ts ?? null;
 }
 
+// A session (an actor_stats upload timestamp) covers every chat event after the
+// previous upload in the same world, up to and including this one.
+async function sessionRange(session) {
+  if (!session || session === "all") return null;
+  const to = new Date(session);
+  const cur = await db("actor_stats").where("uploaded_at", to).first("world_id");
+  let q = db("actor_stats").max("uploaded_at as ts").where("uploaded_at", "<", to);
+  if (cur?.world_id) q = q.where("world_id", cur.world_id);
+  const prev = (await q.first())?.ts ?? null;
+  return { from: prev ? new Date(prev) : null, to };
+}
+
+function applyRange(q, range) {
+  if (!range) return q;
+  if (range.from) q = q.where("occurred_at", ">", range.from);
+  return q.where("occurred_at", "<=", range.to);
+}
+
+function chunks(arr, n) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
+}
+
 app.get("/api/health", (_req, res) => res.json({ status: "ok", db: DB_CLIENT }));
+
+// Body: { worldId, worldName, messages: [{id, ts}], dice: [{m,a,n,d,f,c}], outcomes: [{m,a,n,t,s,k}] }
+// Replaces everything stored for the listed messages.
+app.post("/api/chat-events", authMiddleware, async (req, res) => {
+  const { worldId, messages, dice = [], outcomes = [] } = req.body ?? {};
+  if (!worldId || !Array.isArray(messages)) {
+    return res.status(400).json({ error: "Body must have worldId and a messages array." });
+  }
+  const tsById = new Map();
+  for (const m of messages) {
+    const ts = Number(m?.ts);
+    if (m?.id && Number.isFinite(ts)) tsById.set(String(m.id), new Date(ts));
+  }
+  const ids = [...tsById.keys()];
+
+  const diceRows = [], outcomeRows = [];
+  for (const d of dice) {
+    const at = tsById.get(String(d.m));
+    const dt = parseInt(d.d), f = parseInt(d.f), c = parseInt(d.c);
+    if (!at || !d.a || isNaN(dt) || isNaN(f) || !(c > 0)) continue;
+    diceRows.push({ world_id: worldId, message_id: String(d.m), occurred_at: at, actor_id: String(d.a),
+                    actor_name: d.n ?? null, die_type: dt, face_value: f, count: c });
+  }
+  const seenKeys = new Set();
+  for (const o of outcomes) {
+    const at = tsById.get(String(o.m));
+    if (!at || !o.a || !o.t || typeof o.s !== "boolean" || !o.k || seenKeys.has(o.k)) continue;
+    seenKeys.add(o.k);
+    outcomeRows.push({ world_id: worldId, message_id: String(o.m), occurred_at: at, actor_id: String(o.a),
+                       actor_name: o.n ?? null, outcome_type: String(o.t), success: o.s, event_key: String(o.k).slice(0, 200) });
+  }
+
+  try {
+    await db.transaction(async (trx) => {
+      for (const part of chunks(ids, 500)) {
+        await trx("chat_dice").where("world_id", worldId).whereIn("message_id", part).del();
+        await trx("chat_outcomes").where("world_id", worldId).whereIn("message_id", part).del();
+      }
+      for (const part of chunks(diceRows, 500)) await trx("chat_dice").insert(part);
+      for (const part of chunks(outcomeRows, 500)) await trx("chat_outcomes").insert(part);
+    });
+    console.log(`chat-events ${worldId}: ${ids.length} messages, ${diceRows.length} dice rows, ${outcomeRows.length} outcomes`);
+    res.json({ messages: ids.length, diceRows: diceRows.length, outcomes: outcomeRows.length });
+  } catch (err) {
+    console.error("DB error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.post("/api/roll-stats", authMiddleware, async (req, res) => {
   const { timestamp, worldId, worldName, stats, diceRolls } = req.body;
@@ -359,10 +469,10 @@ app.get("/api/dice-rolls", authMiddleware, async (req, res) => {
   const dieType = req.query.die_type ? parseInt(req.query.die_type) : null;
   const excludeWorlds = req.query.excludeWorlds;
   try {
-    let q = db("dice_rolls").select("actor_name", "die_type", "face_value")
+    let q = db("chat_dice").select("actor_name", "die_type", "face_value")
       .sum("count as count").groupBy("actor_name", "die_type", "face_value")
       .orderBy("actor_name").orderBy("die_type").orderBy("face_value");
-    if (session && session !== "all") q = q.where("uploaded_at", new Date(session));
+    q = applyRange(q, await sessionRange(session));
     if (dieType) q = q.where("die_type", dieType);
     q = applyExcludes(q, req.query.exclude, excludeWorlds);
     res.json(await q);
@@ -373,10 +483,11 @@ app.get("/api/outcomes", authMiddleware, async (req, res) => {
   const session = req.query.session;
   const excludeWorlds = req.query.excludeWorlds;
   try {
-    let q = db("roll_outcomes").select("actor_name", "outcome_type")
-      .sum("success_count as success_count").sum("failure_count as failure_count")
+    let q = db("chat_outcomes").select("actor_name", "outcome_type",
+        db.raw("SUM(CASE WHEN success THEN 1 ELSE 0 END) as success_count"),
+        db.raw("SUM(CASE WHEN success THEN 0 ELSE 1 END) as failure_count"))
       .groupBy("actor_name", "outcome_type").orderBy("actor_name").orderBy("outcome_type");
-    if (session && session !== "all") q = q.where("uploaded_at", new Date(session));
+    q = applyRange(q, await sessionRange(session));
     q = applyExcludes(q, req.query.exclude, excludeWorlds);
     res.json(await q);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -386,8 +497,8 @@ app.get("/api/dice-types", authMiddleware, async (req, res) => {
   const session = req.query.session;
   const excludeWorlds = req.query.excludeWorlds;
   try {
-    let q = db("dice_rolls").distinct("die_type").orderBy("die_type");
-    if (session && session !== "all") q = q.where("uploaded_at", new Date(session));
+    let q = db("chat_dice").distinct("die_type").orderBy("die_type");
+    q = applyRange(q, await sessionRange(session));
     q = applyExcludes(q, req.query.exclude, excludeWorlds);
     const rows = await q;
     res.json(rows.map(r => r.die_type));
@@ -404,4 +515,4 @@ app.get("/api/dice-types", authMiddleware, async (req, res) => {
     console.error("Startup error:", err.message);
     process.exit(1);
   }
-})();
+})();
