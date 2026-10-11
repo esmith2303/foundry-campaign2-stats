@@ -1,12 +1,12 @@
 /**
- * Add Healing — heals a party member (or records healing on "Other") for an
- * amount or a dice roll. The GM's client applies the HP; counted in stats.
+ * Add Healing — heals a party member for an amount or a dice roll (the GM's
+ * client applies the HP), or "None" to record the healing in the stats only.
  */
 import { MODULE_ID, escapeHtml, statCard, partyCharacters, hpOf, mountAmountPicker, resolveAmount } from "./shared.mjs";
 
 const APPLY = "add-healing.apply";
 
-async function gmApply({ actorId, targetId, otherName, amount, roll } = {}, user) {
+async function gmApply({ actorId, targetId, amount, roll } = {}, user) {
   const actor = game.actors.get(actorId);
   if (!actor) throw new Error("Character not found.");
   if (!user?.isGM && !actor.testUserPermission(user, "OWNER")) throw new Error("You don't own that character.");
@@ -23,7 +23,7 @@ async function gmApply({ actorId, targetId, otherName, amount, roll } = {}, user
     if (applied > 0) await target.update({ "system.attributes.hp.value": hp.value + applied });
     row = { actorId: target.id, name: target.name, requested: total, applied, hpAfter: hp.value + applied, hpMax: hp.max };
   } else {
-    row = { actorId: null, name: String(otherName || "").trim().slice(0, 60) || "Other", requested: total, applied: total };
+    row = { actorId: null, name: "No character", requested: total, applied: total };
   }
 
   await ChatMessage.create({
@@ -34,7 +34,7 @@ async function gmApply({ actorId, targetId, otherName, amount, roll } = {}, user
                tags: [r && { text: r.formula }, row.applied < row.requested && { text: "capped", cls: "dis" },
                       row.actorId && { text: `${row.hpAfter} / ${row.hpMax}` }].filter(Boolean),
                value: `+${row.applied}`, valueCls: "success" }],
-      summary: row.actorId ? "Added manually" : "Added manually for stats",
+      summary: row.actorId ? "Added manually" : "Added manually for stats — no character healed",
     }),
     rolls: r ? [r] : [],
     flags: { [MODULE_ID]: { abilityUse: { ability: "add-healing", actorId: actor.id, heals: [row.applied], targets: [row] } } },
@@ -60,7 +60,7 @@ function renderPanel(dialog, { actor, close, back, runAsGM }) {
         <div class="player-row">
           <label>
             <input type="radio" name="qa-heal-target" value=""${party.length ? "" : " checked"}>
-            <input type="text" class="qa-other-name" placeholder="Other (stats only)" maxlength="60">
+            <span>None <span class="qa-dim">— stats only, no character is healed</span></span>
           </label>
         </div>
       </div>
@@ -75,10 +75,8 @@ function renderPanel(dialog, { actor, close, back, runAsGM }) {
   const picker = mountAmountPicker(dialog.querySelector(".qa-amount"), { label: "Healing" });
   const go = dialog.querySelector('[data-qa="go"]');
   const err = dialog.querySelector(".qa-error");
-  const otherName = dialog.querySelector(".qa-other-name");
   const refresh = () => { go.disabled = !picker.isReady(); };
   picker.onChange(refresh);
-  otherName.addEventListener("focus", () => { dialog.querySelector('input[name="qa-heal-target"][value=""]').checked = true; });
 
   dialog.querySelector('[data-qa="back"]').addEventListener("click", back);
   go.addEventListener("click", async () => {
@@ -87,7 +85,7 @@ function renderPanel(dialog, { actor, close, back, runAsGM }) {
       const targetId = dialog.querySelector('input[name="qa-heal-target"]:checked')?.value || null;
       const { amount, roll } = await resolveAmount(picker);
       if (!(amount > 0)) throw new Error(roll ? `Rolled ${roll.total} — nothing to heal.` : "Enter an amount.");
-      const res = await runAsGM(APPLY, { actorId: actor.id, targetId, otherName: otherName.value, amount, roll: roll ? roll.toJSON() : null });
+      const res = await runAsGM(APPLY, { actorId: actor.id, targetId, amount, roll: roll ? roll.toJSON() : null });
       ui.notifications.info(`Healing: ${res.name} +${res.applied}${res.applied < res.requested ? ` (${res.requested} rolled, capped at full HP)` : ""}.`);
       close();
     } catch (e) {

@@ -1,7 +1,7 @@
 /**
  * Add Damage — stats only. Damage dealt by the character outside the normal
- * workflow (a set amount or a dice roll), optionally with the weapon/spell/
- * feature used and a damage type. Applied to nobody.
+ * workflow (a set amount or a dice roll), optionally with the weapon or spell
+ * used and a damage type. Applied to nobody.
  */
 import { MODULE_ID, escapeHtml, statCard, damageTypeOptions, itemDamageType, damageSourceGroups, mountAmountPicker, resolveAmount } from "./shared.mjs";
 

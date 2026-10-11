@@ -44,8 +44,8 @@ Always at the top, for every character:
 | Action | What it does |
 |--------|--------------|
 | Add Kill | Confirm → records a kill for the character. Stats only. |
-| Add Damage | Optional weapon/spell/feature, a set amount or a dice roll (dice buttons + modifier, or type a formula), damage type (defaults to the weapon's, overridable). Stats only — applied to nobody. |
-| Add Healing | Pick a PC (or "Other", stats only) and a set amount or dice roll; the PC is healed (never past max HP). |
+| Add Damage | Optional weapon or spell, a set amount or a dice roll (dice buttons + modifier, or type a formula), damage type (defaults to the weapon's, overridable). Stats only — applied to nobody. |
+| Add Healing | Pick a PC (or "None" for stats only) and a set amount or dice roll; the PC is healed (never past max HP). |
 
 Then the character's sheet abilities, alphabetically:
 

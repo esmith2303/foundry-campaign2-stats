@@ -61,9 +61,9 @@ export function itemDamageType(item) {
   return Array.isArray(part) ? (part[1] || null) : null;
 }
 
-/** Weapons, spells and features on a sheet, grouped for a <select>. */
+/** Weapons and spells on a sheet, grouped for a <select>. */
 export function damageSourceGroups(actor) {
-  const groups = [["weapon", "Weapons"], ["spell", "Spells"], ["feat", "Features"]];
+  const groups = [["weapon", "Weapons"], ["spell", "Spells"]];
   return groups.map(([type, label]) => ({
     label,
     items: actor.items.filter(i => i.type === type).sort((a, b) => a.name.localeCompare(b.name)),
