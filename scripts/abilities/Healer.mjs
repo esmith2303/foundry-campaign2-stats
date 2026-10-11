@@ -15,8 +15,10 @@ const APPLY = "healer.apply";
 function slug(s) {
   return String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
+// "Healer", "Healer (Origin Feat)" … but never "Healer's Kit"
 function isHealerFeat(item) {
-  return item?.type === "feat" && (item.system?.identifier === "healer" || slug(item.name) === "healer");
+  if (item?.type !== "feat") return false;
+  return item.system?.identifier === "healer" || /^healer(?!['’]?s?[-\s]*kit)\b/i.test(String(item.name ?? "").trim());
 }
 function isHealersKit(item) {
   return item?.type !== "feat" && (item?.system?.identifier === "healers-kit" || /^healer'?s?[-\s]?kit/i.test(item?.name ?? ""));
