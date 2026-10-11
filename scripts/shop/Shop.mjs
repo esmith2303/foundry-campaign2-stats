@@ -3,25 +3,34 @@
  *
  * GM: the store button opens a floating panel (it doesn't block the screen, so
  * compendiums and the Items sidebar stay usable) listing saved shops. A shop
- * has a title and wares; drag items in from a compendium, the Items sidebar or
- * a sheet (price taken from the item), or add custom items (0 gp). Name, price,
- * coin and stock are editable. Shops are saved in the world for reuse.
+ * has a title, an owner and wares; drag items in from a compendium, the Items
+ * sidebar or a sheet (price taken from the item), or add custom items (0 gp).
+ * Name, price, coin and stock are editable. Shops are saved in the world.
  *
  * "Visit" pushes the shop to every player (and the GM). Players pick a
- * character, quantities and — if they haggle — a different price. The GM's
- * client checks stock and coin, takes the money (making change), adds the
- * items to the sheet, reduces stock and posts a receipt card that shows any
- * price changes.
+ * character and:
+ *   Buy  — quantities at the shop's prices. To haggle they change a price and
+ *          press Haggle: Persuasion is rolled and the GM accepts, counters or
+ *          refuses (haggle.mjs). Agreed prices hold for the visit.
+ *   Sell — anything physical from their sheet at an asking price (half value
+ *          by default; asking more rolls Persuasion). The GM decides what the
+ *          shop buys; sold items join the wares at the price paid + 10%.
+ * The GM's client does every purchase and sale, one at a time: checks stock
+ * and coin, moves items and money, updates stock and posts a receipt card.
  */
 import { MODULE_ID, escapeHtml } from "../abilities/shared.mjs";
 import { registerGmAction, runAsGM, castersForUser } from "../QuickActions.mjs";
-import { COIN_CP, DENOMS, toCp, walletCp, formatCp, pay } from "./currency.mjs";
+import { COIN_CP, DENOMS, toCp, walletCp, formatCp, pay, receive } from "./currency.mjs";
+import { rollPersuasion, sendOffer, answerCounter, cancelOffer, configureHaggle, handleHaggleSocket } from "./haggle.mjs";
 import { detailsHtml, bindDetails, applyDetails, validateItem } from "./itemDetails.mjs";
 import { addWindowControls } from "../windowControls.mjs";
 
 const SOCKET = `module.${MODULE_ID}`;
 export const SHOP_TOOL = "stats-shop";
 const BUY = "shop.buy";
+const SELL = "shop.sell";
+// GM's client: prices agreed by haggling, for the current visit. { shopId: { actorId: { wareKey: unitCp } } }
+const deals = {};
 const PHYSICAL = new Set(["weapon", "equipment", "consumable", "tool", "loot", "container", "backpack"]);
 const STACKABLE = new Set(["consumable", "loot"]);
 
@@ -61,9 +70,23 @@ export function shopLabel(shop) {
 
 export function registerShop() {
   registerGmAction(BUY, gmBuyInTurn);
+  registerGmAction(SELL, gmSellInTurn);
+  // A deal struck by haggling (GM's client): remember the price, or carry out the sale
+  configureHaggle({
+    agreed: async (offer, lines, user) => {
+      if (offer.kind === "sell") {
+        return gmSellInTurn({ shopId: offer.shopId, actorId: offer.actorId, lines: lines.map(l => ({ itemId: l.key, qty: l.qty, unitCp: l.dealCp })) }, user);
+      }
+      const forActor = ((deals[offer.shopId] ??= {})[offer.actorId] ??= {});
+      for (const l of lines) forActor[l.key] = l.dealCp;
+      return {};
+    },
+  });
   game.socket.on(SOCKET, (data) => {
+    if (handleHaggleSocket(data)) return;
     if (data?.action === "shop.visit") openVisit(data.shop);
     else if (data?.action === "shop.stock") applyStock(data.shopId, data.stock);
+    else if (data?.action === "shop.wares") applyWares(data.shop);
   });
 }
 
@@ -493,38 +516,137 @@ function dragData(e) {
 
 // ── Visit ────────────────────────────────────────────────────────────────────
 
-/** GM: open the shop for everyone. */
+/** GM: open the shop for everyone. Haggled prices last for one visit. */
 function visit(shop) {
   if (!shop) return;
+  delete deals[shop.id];
   game.socket.emit(SOCKET, { action: "shop.visit", shop });
   openVisit(shop);
   ui.notifications.info(`${shopLabel(shop)} is open for the party.`);
 }
 
-let current = null;   // { shop, render } for the open visit popup
+let current = null;   // { shop, refreshStock, render } for the open visit popup
 
 function applyStock(shopId, stock) {
   if (!current || current.shop.id !== shopId) return;
   for (const it of current.shop.items) if (it.key in stock) it.stock = stock[it.key];
   current.refreshStock();
 }
+/** New wares (e.g. something a player sold) — redraw the open shop. */
+function applyWares(shop) {
+  if (!current || current.shop.id !== shop?.id) return;
+  current.shop.items = foundry.utils.deepClone(shop.items);
+  current.render();
+}
+
+// What a shop can be offered: physical items, not containers (their contents would be orphaned)
+const SELLABLE = new Set(["weapon", "equipment", "consumable", "tool", "loot"]);
+const valueCpOf = (item) => { const p = priceOf(item); return toCp(p.value, p.denomination); };
+const quantityOf = (item) => {
+  const q = item?.system?.quantity;
+  return q === undefined || q === null ? 1 : Math.max(0, Math.floor(Number(q)) || 0);
+};
+const gp = (cp) => +(cp / 100).toFixed(2);
+const fromGp = (v) => Math.max(0, Math.round((Number(v) || 0) * 100));
 
 function openVisit(shop) {
   const casters = castersForUser();
   if (!shop || (!game.user.isGM && !casters.length)) return;   // not in the party → nothing to show
   if (!casters.length) return ui.notifications.warn("No player characters to shop with.");
   const { dialog, close } = openShell({ floating: false });
+  const isGM = game.user.isGM;
   let buyer = (game.user.character && casters.includes(game.user.character)) ? game.user.character : casters[0];
-  const qty = {}, price = {};
+  let tab = "buy";
+  const qty = {}, price = {};          // buy: per ware key (price in the ware's coin)
+  const agreedBy = {};                 // actorId → { wareKey: unitCp } prices the GM agreed to
+  const sellQty = {}, sellAsk = {};    // sell: per item id (asking price in gp)
+  let pending = null;                  // offer waiting for the GM: { id, kind }
+  let status = null;                   // { kind: "wait" | "counter" | "ok" | "no", text, lines? }
 
   const walletOf = (a) => walletCp(a?.system?.currency);
   const stockText = (it) => it.stock === null || it.stock === undefined ? "" : it.stock > 0 ? `${it.stock} left` : "sold out";
+  const agreed = () => (agreedBy[buyer.id] ??= {});
+  const listCpOf = (it) => toCp(it.price.value, it.price.denomination);
+  const coinOf = (it) => COIN_CP[it.price.denomination] ?? 100;
+  const basePriceOf = (it) => (agreed()[it.key] ?? listCpOf(it)) / coinOf(it);   // agreed price, else list
+  const sellables = () => [...(buyer.items?.contents ?? buyer.items?._l ?? buyer.items ?? [])]
+    .filter(i => SELLABLE.has(i.type) && quantityOf(i) > 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  function statusHtml() {
+    if (!status) return "";
+    if (status.kind === "counter") {
+      return `<div class="qa-offer-status counter">
+        <div><b>Counter-offer</b> from ${escapeHtml(ownerName(shop) || "the shopkeeper")}:</div>
+        <ul>${status.lines.map(l => `<li>${escapeHtml(l.name)} ×${l.qty}: <b>${formatCp(l.dealCp)}</b> each <span class="qa-tag">you asked ${formatCp(l.offerCp)}</span></li>`).join("")}</ul>
+        <div class="qa-offer-actions"><button type="button" class="btn" data-act="counter-no">Decline</button><button type="button" class="btn primary" data-act="counter-yes">Accept</button></div>
+      </div>`;
+    }
+    return `<div class="qa-offer-status ${status.kind}">${status.kind === "wait" ? '<i class="fas fa-hourglass-half"></i> ' : ""}${escapeHtml(status.text)}
+      ${status.kind === "wait" ? '<button type="button" class="btn" data-act="cancel-offer">Withdraw</button>' : ""}</div>`;
+  }
+
+  function buyHtml() {
+    return `
+      <div class="field">
+        <div class="field-label qa-ware-cols"><span>Wares</span><span>Price each</span><span>Qty</span><span>Total</span></div>
+        <div class="players">
+          ${shop.items.length ? shop.items.map(it => `
+            <div class="player-row qa-ware" data-key="${it.key}">
+              <img class="qa-item-img" src="${escapeHtml(it.img || "icons/svg/item-bag.svg")}" alt="">
+              <label class="qa-ware-name" title="${escapeHtml(plainText(it.data?.system?.description?.value))}"><span>${escapeHtml(it.name)}</span><span class="qa-hp qa-stock">${stockText(it)}</span></label>
+              <div class="qa-price">
+                <input type="number" class="qa-num qa-ware-price" min="0" step="any" value="${+(+(price[it.key] ?? basePriceOf(it))).toFixed(2)}"
+                  title="${isGM ? "Change the price — it shows on the receipt" : "Change the price and press Haggle to make an offer"}">
+                <span class="qa-denom">${it.price.denomination}</span>
+              </div>
+              <div class="num-input">
+                <button type="button" data-step="-1">−</button>
+                <input type="number" class="qa-ware-qty" min="0" step="1" value="${qty[it.key] ?? 0}">
+                <button type="button" data-step="1">+</button>
+              </div>
+              <span class="qa-line-total">—</span>
+            </div>`).join("") : `<div class="player-row qa-empty">Nothing for sale right now.</div>`}
+        </div>
+      </div>
+      <div class="qa-alloc">Total <b class="qa-total">0 gp</b> · <span class="qa-buyer-name">${escapeHtml(buyer.name)}</span> has <b class="qa-have">${formatCp(walletOf(buyer))}</b></div>
+      <div class="qa-note">${isGM ? "Change a price to sell at a different price — the receipt will show it."
+        : "Want a better price? Change it and press <b>Haggle</b> — you'll roll Persuasion and the shopkeeper decides."}</div>`;
+  }
+
+  function sellHtml() {
+    const items = sellables();
+    return `
+      <div class="field">
+        <div class="field-label qa-sell-cols"><span>Your items</span><span>Value</span><span>Asking (gp)</span><span>Qty</span><span>Total</span></div>
+        <div class="players">
+          ${items.length ? items.map(i => {
+            const v = valueCpOf(i);
+            return `
+            <div class="player-row qa-sell" data-id="${i.id}">
+              <img class="qa-item-img" src="${escapeHtml(i.img || "icons/svg/item-bag.svg")}" alt="">
+              <label class="qa-ware-name"><span>${escapeHtml(i.name)}</span><span class="qa-hp">${quantityOf(i) > 1 ? `have ${quantityOf(i)}` : ""}${i.system?.equipped ? " · equipped" : ""}</span></label>
+              <span class="qa-sell-value">${v ? formatCp(v) : "—"}</span>
+              <input type="number" class="qa-num qa-sell-ask" min="0" step="any" value="${sellAsk[i.id] ?? gp(Math.floor(v / 2))}" title="Shops usually pay half the value">
+              <div class="num-input">
+                <button type="button" data-step="-1">−</button>
+                <input type="number" class="qa-sell-qty" min="0" step="1" value="${sellQty[i.id] ?? 0}">
+                <button type="button" data-step="1">+</button>
+              </div>
+              <span class="qa-line-total">—</span>
+            </div>`;
+          }).join("") : `<div class="player-row qa-empty">${escapeHtml(buyer.name)} has nothing the shop could buy.</div>`}
+        </div>
+      </div>
+      <div class="qa-alloc">Asking <b class="qa-total">0 gp</b> · <span class="qa-buyer-name">${escapeHtml(buyer.name)}</span> has <b class="qa-have">${formatCp(walletOf(buyer))}</b></div>
+      <div class="qa-note">Shops usually pay half an item's value.${isGM ? "" : " Ask for more and you'll roll Persuasion."} The shopkeeper decides what they'll buy.</div>`;
+  }
 
   function render() {
     dialog.innerHTML = `
       <div class="title">${escapeHtml(shopLabel(shop))}</div>
       <div class="field">
-        <div class="field-label">Buying as</div>
+        <div class="field-label">${tab === "buy" ? "Buying as" : "Selling as"}</div>
         <div class="players">
           ${casters.map(a => `
             <div class="player-row">
@@ -536,43 +658,96 @@ function openVisit(shop) {
             </div>`).join("")}
         </div>
       </div>
-      <div class="field">
-        <div class="field-label qa-ware-cols"><span>Wares</span><span>Price each</span><span>Qty</span><span>Total</span></div>
-        <div class="players">
-          ${shop.items.map(it => `
-            <div class="player-row qa-ware" data-key="${it.key}">
-              <img class="qa-item-img" src="${escapeHtml(it.img || "icons/svg/item-bag.svg")}" alt="">
-              <label class="qa-ware-name" title="${escapeHtml(plainText(it.data?.system?.description?.value))}"><span>${escapeHtml(it.name)}</span><span class="qa-hp qa-stock">${stockText(it)}</span></label>
-              <div class="qa-price">
-                <input type="number" class="qa-num qa-ware-price" min="0" step="any" value="${+(+(price[it.key] ?? it.price.value)).toFixed(2)}" title="Haggled? Change the price — it shows on the receipt">
-                <span class="qa-denom">${it.price.denomination}</span>
-              </div>
-              <div class="num-input">
-                <button type="button" data-step="-1">−</button>
-                <input type="number" class="qa-ware-qty" min="0" step="1" value="${qty[it.key] ?? 0}">
-                <button type="button" data-step="1">+</button>
-              </div>
-              <span class="qa-line-total">—</span>
-            </div>`).join("")}
-        </div>
+      <div class="mode-toggle qa-shop-tabs">
+        <button type="button" data-tab="buy" class="${tab === "buy" ? "active" : ""}">Buy</button>
+        <button type="button" data-tab="sell" class="${tab === "sell" ? "active" : ""}">Sell</button>
       </div>
-      <div class="qa-alloc">Total <b class="qa-total">0 gp</b> · <span class="qa-buyer-name">${escapeHtml(buyer.name)}</span> has <b class="qa-have">${formatCp(walletOf(buyer))}</b></div>
-      <div class="qa-note">Haggled? Change the price — the receipt will show the change.</div>
+      ${tab === "buy" ? buyHtml() : sellHtml()}
+      ${statusHtml()}
       <div class="qa-error" hidden></div>
       <div class="actions">
         <button type="button" class="btn" data-act="leave">Leave</button>
-        <button type="button" class="btn primary" data-act="buy" disabled>Buy</button>
+        ${tab === "buy"
+          ? `${isGM ? "" : '<button type="button" class="btn" data-act="haggle" disabled>Haggle</button>'}<button type="button" class="btn primary" data-act="buy" disabled>Buy</button>`
+          : `<button type="button" class="btn primary" data-act="sell" disabled>${isGM ? "Sell" : "Offer to sell"}</button>`}
       </div>`;
 
+    dialog.querySelector('[data-act="leave"]').addEventListener("click", () => {
+      if (pending) cancelOffer(pending.id);
+      close();
+    });
+    dialog.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => {
+      if (b.dataset.tab === tab) return;
+      tab = b.dataset.tab;
+      if (status?.kind !== "wait" && status?.kind !== "counter") status = null;
+      render();
+    }));
+    dialog.querySelectorAll('input[name="qa-buyer"]').forEach(r => r.addEventListener("change", () => {
+      buyer = game.actors.get(r.value) ?? buyer;
+      for (const k of Object.keys(price)) delete price[k];
+      render();
+    }));
+    dialog.querySelector('[data-act="cancel-offer"]')?.addEventListener("click", () => {
+      if (pending) cancelOffer(pending.id);
+      pending = null; status = { kind: "no", text: "Offer withdrawn." };
+      render();
+    });
+    dialog.querySelector('[data-act="counter-yes"]')?.addEventListener("click", () => {
+      answerCounter(pending.id, true);
+      status = { kind: "wait", text: "Shaking on it…" };
+      render();
+    });
+    dialog.querySelector('[data-act="counter-no"]')?.addEventListener("click", () => {
+      answerCounter(pending.id, false);
+      pending = null; status = { kind: "no", text: "You declined the counter-offer." };
+      if (tab === "buy") for (const k of Object.keys(price)) delete price[k];
+      render();
+    });
+    if (tab === "buy") bindBuy(); else bindSell();
+  }
+
+  // Handles the GM's answers to an offer
+  function onReply(r) {
+    if (!pending || r.offerId !== pending.id) return;
+    const kind = pending.kind;
+    switch (r.status) {
+      case "countered":
+        status = { kind: "counter", lines: r.lines };
+        break;
+      case "accepted":   // haggled purchase prices
+        for (const l of r.lines) { agreed()[l.key] = l.dealCp; delete price[l.key]; }
+        pending = null;
+        status = { kind: "ok", text: `Deal! ${r.lines.map(l => `${l.name} at ${formatCp(l.dealCp)}`).join(", ")} — now press Buy.` };
+        break;
+      case "done":       // sale carried out
+        pending = null;
+        for (const k of Object.keys(sellQty)) delete sellQty[k];
+        for (const k of Object.keys(sellAsk)) delete sellAsk[k];
+        status = { kind: "ok", text: `Sold for ${formatCp(r.result?.totalCp ?? 0)}.` };
+        setTimeout(render, 400);   // let the sheet changes arrive
+        break;
+      default:           // refused, declined, error, cancelled
+        pending = null;
+        status = { kind: "no", text: r.message || "No deal." };
+        if (kind === "buy") for (const k of Object.keys(price)) delete price[k];
+    }
+    render();
+  }
+
+  function bindBuy() {
     const rows = [...dialog.querySelectorAll(".qa-ware")];
     const itemOf = (r) => shop.items.find(i => i.key === r.dataset.key);
     const qtyInput = (r) => r.querySelector(".qa-ware-qty");
     const capOf = (r) => { const s = itemOf(r).stock; return s === null || s === undefined ? 999 : s; };
     const err = dialog.querySelector(".qa-error");
     const buyBtn = dialog.querySelector('[data-act="buy"]');
+    const haggleBtn = dialog.querySelector('[data-act="haggle"]');
+    // A player's changed price is an offer until the GM agrees to it
+    const offerCpOf = (r) => toCp(Math.max(0, Number(r.querySelector(".qa-ware-price").value) || 0), itemOf(r).price.denomination);
+    const isOffer = (r) => !isGM && offerCpOf(r) !== Math.round(basePriceOf(itemOf(r)) * coinOf(itemOf(r)));
 
     function refresh() {
-      let total = 0, any = false;
+      let total = 0, any = false, unagreed = false, offers = 0;
       for (const r of rows) {
         const it = itemOf(r);
         const q = Math.max(0, Math.min(capOf(r), Math.floor(Number(qtyInput(r).value) || 0)));
@@ -580,11 +755,17 @@ function openVisit(shop) {
         qty[it.key] = q;
         const unit = Math.max(0, Number(r.querySelector(".qa-ware-price").value) || 0);
         price[it.key] = unit;
+        const offer = isOffer(r);
+        offers += offer ? 1 : 0;
+        unagreed ||= offer && q > 0;
         const line = q * toCp(unit, it.price.denomination);
         total += line;
         any ||= q > 0;
         r.querySelector(".qa-line-total").textContent = q ? formatCp(line) : "—";
-        r.querySelector(".qa-ware-price").classList.toggle("edited", toCp(unit, it.price.denomination) !== toCp(it.price.value, it.price.denomination));
+        const input = r.querySelector(".qa-ware-price");
+        input.classList.toggle("edited", toCp(unit, it.price.denomination) !== listCpOf(it));
+        input.classList.toggle("agreed", agreed()[it.key] !== undefined && !offer);
+        input.disabled = !!pending;
         const [minus, plus] = r.querySelectorAll("[data-step]");
         minus.disabled = q <= 0;
         plus.disabled = q >= capOf(r);
@@ -596,9 +777,13 @@ function openVisit(shop) {
       dialog.querySelector(".qa-total").textContent = formatCp(total);
       dialog.querySelector(".qa-have").textContent = formatCp(have);
       const short = total > have;
-      err.hidden = !short;
+      const needsHaggle = unagreed && !pending;
+      err.hidden = !(short || needsHaggle);
       if (short) err.textContent = `${buyer.name} is ${formatCp(total - have)} short.`;
-      buyBtn.disabled = !any || short;
+      else if (needsHaggle) err.textContent = "You've changed a price — Haggle first, or put it back.";
+      buyBtn.disabled = !any || short || unagreed || !!pending;
+      if (haggleBtn) haggleBtn.disabled = !offers || !!pending;
+      if (haggleBtn) haggleBtn.textContent = offers ? `Haggle (${offers})` : "Haggle";
     }
 
     for (const r of rows) {
@@ -610,21 +795,31 @@ function openVisit(shop) {
         refresh();
       }));
     }
-    dialog.querySelectorAll('input[name="qa-buyer"]').forEach(r => r.addEventListener("change", () => {
-      buyer = game.actors.get(r.value) ?? buyer;
-      dialog.querySelector(".qa-buyer-name").textContent = buyer.name;
-      refresh();
-    }));
-    dialog.querySelector('[data-act="leave"]').addEventListener("click", close);
+    haggleBtn?.addEventListener("click", async () => {
+      const lines = rows.filter(isOffer).map(r => {
+        const it = itemOf(r);
+        return { key: it.key, name: it.name, img: it.img, qty: Math.max(1, qty[it.key] || 0), listCp: listCpOf(it), offerCp: offerCpOf(r) };
+      });
+      if (!lines.length) return;
+      haggleBtn.disabled = true;
+      const roll = await rollPersuasion(buyer);
+      try {
+        const id = sendOffer({ kind: "buy", shopId: shop.id, shopLabel: shopLabel(shop), actorId: buyer.id, actorName: buyer.name, roll, lines }, onReply);
+        pending = { id, kind: "buy" };
+        status = { kind: "wait", text: `Haggling${roll ? ` (Persuasion ${roll.total})` : ""} — waiting for the shopkeeper…` };
+      } catch (e) { status = { kind: "no", text: e.message }; }
+      render();
+    });
     buyBtn.addEventListener("click", async () => {
-      const lines = rows.map(r => ({ key: r.dataset.key, qty: qty[r.dataset.key] || 0, unit: price[r.dataset.key] }))
+      const lines = rows.map(r => ({ key: r.dataset.key, qty: qty[r.dataset.key] || 0, unit: isGM ? price[r.dataset.key] : undefined }))
         .filter(l => l.qty > 0);
       buyBtn.disabled = true; buyBtn.textContent = "Buying…"; err.hidden = true;
       try {
         const res = await runAsGM(BUY, { shopId: shop.id, actorId: buyer.id, lines });
         ui.notifications.info(`${buyer.name} paid ${formatCp(res.totalCp)}; ${formatCp(res.leftCp)} left.`);
         for (const k of Object.keys(qty)) qty[k] = 0;
-        for (const k of Object.keys(price)) delete price[k];   // haggled prices don't carry over
+        for (const k of Object.keys(price)) delete price[k];
+        status = null;
         render();
       } catch (e) {
         err.hidden = false; err.textContent = e.message;
@@ -636,7 +831,80 @@ function openVisit(shop) {
     current.refreshStock = refresh;
   }
 
-  current = { shop: foundry.utils.deepClone(shop), refreshStock: () => {} };
+  function bindSell() {
+    const rows = [...dialog.querySelectorAll(".qa-sell")];
+    const itemOf = (r) => buyer.items.get(r.dataset.id);
+    const qtyInput = (r) => r.querySelector(".qa-sell-qty");
+    const err = dialog.querySelector(".qa-error");
+    const sellBtn = dialog.querySelector('[data-act="sell"]');
+
+    function refresh() {
+      let total = 0, any = false;
+      for (const r of rows) {
+        const item = itemOf(r);
+        if (!item) continue;
+        const cap = quantityOf(item);
+        const q = Math.max(0, Math.min(cap, Math.floor(Number(qtyInput(r).value) || 0)));
+        qtyInput(r).value = String(q);
+        sellQty[item.id] = q;
+        const ask = Math.max(0, Number(r.querySelector(".qa-sell-ask").value) || 0);
+        sellAsk[item.id] = ask;
+        const line = q * fromGp(ask);
+        total += line;
+        any ||= q > 0;
+        r.querySelector(".qa-line-total").textContent = q ? formatCp(line) : "—";
+        r.querySelector(".qa-sell-ask").classList.toggle("edited", fromGp(ask) > Math.floor(valueCpOf(item) / 2));
+        r.querySelector(".qa-sell-ask").disabled = !!pending;
+        const [minus, plus] = r.querySelectorAll("[data-step]");
+        minus.disabled = q <= 0 || !!pending;
+        plus.disabled = q >= cap || !!pending;
+      }
+      dialog.querySelector(".qa-total").textContent = formatCp(total);
+      dialog.querySelector(".qa-have").textContent = formatCp(walletOf(buyer));
+      err.hidden = true;
+      sellBtn.disabled = !any || !!pending;
+    }
+
+    for (const r of rows) {
+      qtyInput(r).addEventListener("input", refresh);
+      qtyInput(r).addEventListener("focus", (e) => e.target.select());
+      r.querySelector(".qa-sell-ask").addEventListener("input", refresh);
+      r.querySelectorAll("[data-step]").forEach(b => b.addEventListener("click", () => {
+        qtyInput(r).value = String((Math.floor(Number(qtyInput(r).value)) || 0) + Number(b.dataset.step));
+        refresh();
+      }));
+    }
+    sellBtn.addEventListener("click", async () => {
+      const lines = rows.map(r => ({ r, item: itemOf(r) })).filter(x => x.item && (sellQty[x.item.id] || 0) > 0).map(({ item }) => ({
+        key: item.id, name: item.name, img: item.img, qty: sellQty[item.id], listCp: valueCpOf(item), offerCp: fromGp(sellAsk[item.id]),
+      }));
+      if (!lines.length) return;
+      sellBtn.disabled = true; err.hidden = true;
+      if (isGM) {
+        try {
+          const res = await runAsGM(SELL, { shopId: shop.id, actorId: buyer.id, lines: lines.map(l => ({ itemId: l.key, qty: l.qty, unitCp: l.offerCp })) });
+          for (const k of Object.keys(sellQty)) delete sellQty[k];
+          for (const k of Object.keys(sellAsk)) delete sellAsk[k];
+          status = { kind: "ok", text: `Sold for ${formatCp(res.totalCp)}.` };
+          setTimeout(render, 300);
+        } catch (e) { err.hidden = false; err.textContent = e.message; sellBtn.disabled = false; }
+        return;
+      }
+      // Asking more than half the value is haggling: roll Persuasion
+      const haggling = lines.some(l => l.offerCp > Math.floor(l.listCp / 2));
+      const roll = haggling ? await rollPersuasion(buyer) : null;
+      try {
+        const id = sendOffer({ kind: "sell", shopId: shop.id, shopLabel: shopLabel(shop), actorId: buyer.id, actorName: buyer.name, roll, lines }, onReply);
+        pending = { id, kind: "sell" };
+        status = { kind: "wait", text: `Offered to the shopkeeper${roll ? ` (Persuasion ${roll.total})` : ""} — waiting…` };
+      } catch (e) { status = { kind: "no", text: e.message }; }
+      render();
+    });
+    refresh();
+    current.refreshStock = () => {};
+  }
+
+  current = { shop: foundry.utils.deepClone(shop), refreshStock: () => {}, render: () => render() };
   shop = current.shop;
   render();
 }
@@ -650,11 +918,13 @@ function openVisit(shop) {
  * click can't be charged once for two lots.
  */
 let buyQueue = Promise.resolve();
-function gmBuyInTurn(payload, user) {
-  const turn = buyQueue.then(() => gmBuy(payload, user));
+function inTurn(fn) {
+  const turn = buyQueue.then(fn);
   buyQueue = turn.catch(() => {});   // a refused purchase doesn't hold up the next
   return turn;
 }
+const gmBuyInTurn = (payload, user) => inTurn(() => gmBuy(payload, user));
+const gmSellInTurn = (payload, user) => inTurn(() => gmSell(payload, user));
 
 async function gmBuy({ shopId, actorId, lines } = {}, user) {
   const shops = allShops();
@@ -673,7 +943,10 @@ async function gmBuy({ shopId, actorId, lines } = {}, user) {
       throw new Error(it.stock ? `Only ${it.stock} ${it.name} left.` : `${it.name} has sold out.`);
     }
     const listCp = toCp(it.price.value, it.price.denomination);
-    const unitCp = l.unit === undefined || l.unit === null ? listCp : toCp(l.unit, it.price.denomination);
+    // Players pay the list price, or what the GM agreed when they haggled; the GM can set any price
+    const deal = deals[shopId]?.[actorId]?.[it.key];
+    const unitCp = deal !== undefined ? deal
+      : user?.isGM && l.unit !== undefined && l.unit !== null ? toCp(l.unit, it.price.denomination) : listCp;
     bought.push({ it, q, unitCp, listCp, unitValue: unitCp / (COIN_CP[it.price.denomination] ?? 100) });
   }
   if (!bought.length) throw new Error("Nothing selected.");
@@ -728,7 +1001,7 @@ async function gmBuy({ shopId, actorId, lines } = {}, user) {
           <span class="qa-roll-name">${b.q}× ${escapeHtml(b.it.name)}</span>
           <span class="qa-receipt-amt">${formatCp(b.q * b.unitCp)}</span>
         </div>
-        <div class="qa-roll-meta">${unit} each${changed ? ` · <span class="qa-was" title="Price changed by the player">list price ${escapeHtml(priceText(b.it.price))}</span>` : ""}</div>
+        <div class="qa-roll-meta">${unit} each${changed ? ` · <span class="qa-was" title="Haggled price">list price ${escapeHtml(priceText(b.it.price))}</span>` : ""}</div>
       </li>`;
   }).join("");
   const haggled = bought.some(b => b.unitCp !== b.listCp);
@@ -746,7 +1019,7 @@ async function gmBuy({ shopId, actorId, lines } = {}, user) {
         </header>
         <section class="card-content">
           <ul class="qa-rows">${rows}</ul>
-          <div class="group-summary">Paid ${formatCp(totalCp)} · ${formatCp(leftCp)} left${haggled ? " · price changed by player" : ""}</div>
+          <div class="group-summary">Paid ${formatCp(totalCp)} · ${formatCp(leftCp)} left${haggled ? " · haggled" : ""}</div>
         </section>
       </div>`,
     flags: { [MODULE_ID]: { shopPurchase: {
@@ -755,5 +1028,98 @@ async function gmBuy({ shopId, actorId, lines } = {}, user) {
     } } },
   });
 
+  return { totalCp, leftCp };
+}
+
+// ── GM: sale ─────────────────────────────────────────────────────────────────
+
+/**
+ * A character sells items to the shop (after the GM agreed): the items leave
+ * the sheet, the coins arrive, and the shop puts them up for sale at the price
+ * it paid + 10% (the GM can change that in the shop editor).
+ */
+async function gmSell({ shopId, actorId, lines } = {}, user) {
+  const shops = allShops();
+  const shop = shops[shopId];
+  if (!shop) throw new Error("That shop no longer exists.");
+  const actor = game.actors.get(actorId);
+  if (!actor) throw new Error("Character not found.");
+  if (!user?.isGM && !actor.testUserPermission(user, "OWNER")) throw new Error("You don't own that character.");
+
+  const sold = [];
+  for (const l of Array.isArray(lines) ? lines : []) {
+    const q = Math.floor(Number(l?.qty)) || 0;
+    if (q <= 0) continue;
+    const item = actor.items.get(l.itemId);
+    if (!item) throw new Error(`${actor.name} doesn't have that item any more.`);
+    const have = quantityOf(item);
+    if (q > have) throw new Error(`${actor.name} only has ${have} ${item.name}.`);
+    sold.push({ item, q, have, unitCp: Math.max(0, Math.round(Number(l.unitCp) || 0)), valueCp: valueCpOf(item), data: cleanItemData(item) });
+  }
+  if (!sold.length) throw new Error("Nothing to sell.");
+  const totalCp = sold.reduce((t, s) => t + s.q * s.unitCp, 0);
+  const after = receive(actor.system?.currency, totalCp);
+
+  // Take the items, then pay
+  const updates = sold.filter(s => s.q < s.have).map(s => ({ _id: s.item.id, "system.quantity": s.have - s.q }));
+  const deletes = sold.filter(s => s.q >= s.have).map(s => s.item.id);
+  if (updates.length) await actor.updateEmbeddedDocuments("Item", updates);
+  if (deletes.length) await actor.deleteEmbeddedDocuments("Item", deletes);
+  await actor.update({ "system.currency": after });
+
+  // Into the shop's wares at the price paid + 10%
+  for (const s of sold) {
+    const existing = shop.items.find(i => i.name === s.item.name && i.type === s.item.type);
+    if (existing) {
+      if (existing.stock !== null && existing.stock !== undefined) existing.stock += s.q;
+      continue;
+    }
+    const resale = { value: gp(Math.round(s.unitCp * 1.1)), denomination: "gp" };
+    const data = s.data;
+    data.system ??= {};
+    data.system.quantity = 1;
+    data.system.price = { ...resale };
+    if ("equipped" in data.system) data.system.equipped = false;
+    if ("attuned" in data.system) data.system.attuned = false;
+    delete data.system.container;
+    shop.items.push({ key: newId(), name: s.item.name, img: s.item.img, type: s.item.type, uuid: null, price: resale, stock: s.q, data });
+  }
+  shops[shopId] = shop;
+  await game.settings.set(MODULE_ID, "shops", shops);
+  game.socket.emit(SOCKET, { action: "shop.wares", shop });
+  applyWares(shop);
+
+  // Receipt
+  const leftCp = walletCp(after);
+  const rows = sold.map(s => `
+      <li class="qa-roll-row">
+        <div class="qa-receipt-head">
+          <span class="qa-roll-name">${s.q}× ${escapeHtml(s.item.name)}</span>
+          <span class="qa-receipt-amt">+${formatCp(s.q * s.unitCp)}</span>
+        </div>
+        <div class="qa-roll-meta">${formatCp(s.unitCp)} each${s.valueCp ? ` · value ${formatCp(s.valueCp)}` : ""}</div>
+      </li>`).join("");
+  await ChatMessage.create({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    content: `
+      <div class="skill-check-card qa-card">
+        <header class="card-header">
+          <span class="icon"><i class="fas fa-hand-holding-dollar"></i></span>
+          <div class="title-block">
+            <div class="skill-name">${escapeHtml(shopLabel(shop))}</div>
+            <div class="ability-tag">${escapeHtml(actor.name)} — sale</div>
+          </div>
+          <span class="dc-badge">+${formatCp(totalCp)}</span>
+        </header>
+        <section class="card-content">
+          <ul class="qa-rows">${rows}</ul>
+          <div class="group-summary">Received ${formatCp(totalCp)} · now has ${formatCp(leftCp)}</div>
+        </section>
+      </div>`,
+    flags: { [MODULE_ID]: { shopSale: {
+      shopId, shopTitle: shop.title, shopOwner: ownerName(shop) || null, actorId: actor.id, totalCp,
+      lines: sold.map(s => ({ name: s.item.name, type: s.item.type ?? null, qty: s.q, unitCp: s.unitCp, valueCp: s.valueCp })),
+    } } },
+  });
   return { totalCp, leftCp };
 }

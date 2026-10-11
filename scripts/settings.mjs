@@ -17,6 +17,15 @@ export function registerSettings(moduleId) {
     default: "",
   });
 
+  game.settings.register(moduleId, "combatRecap", {
+    name: "Combat recap",
+    hint: "When combat ends, show everyone a recap of the fight with achievements, and save it to chat.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
   // Shops built by the GM (Shop button). { [shopId]: { id, title, items: [...] } }
   game.settings.register(moduleId, "shops", {
     scope: "world",

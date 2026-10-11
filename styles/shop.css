@@ -6,64 +6,64 @@
    compendiums / the Items sidebar stay usable for dragging. */
 #qa-shop-overlay.qa-floating { background: transparent; pointer-events: none; align-items: flex-start; justify-content: flex-start; }
 #qa-shop-overlay.qa-floating #qa-shop-dialog { pointer-events: auto; position: fixed; left: 110px; top: 70px; max-height: calc(100vh - 100px); }
-#qa-shop-dialog .qa-drag-handle { cursor: move; user-select: none; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-drag-handle { cursor: move; user-select: none; }
 #qa-shop-overlay:not(.qa-floating) .qa-drag-handle { cursor: default; }
 
-#qa-shop-dialog .qa-text, #qa-shop-dialog .qa-num, #qa-shop-dialog .qa-item-denom {
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-text, :is(#qa-shop-dialog, .qa-popup-dialog) .qa-num, :is(#qa-shop-dialog, .qa-popup-dialog) .qa-item-denom {
   height: 1.9rem; background: #0a0a0f; color: #f0ece4;
   border: 1px solid #2a2a3a !important; border-radius: 3px; box-shadow: none; outline: none;
   padding: 0 .45rem; font-family: 'Crimson Text', serif; font-size: .9rem;
 }
-#qa-shop-dialog .qa-num { font-family: 'JetBrains Mono', monospace; font-size: .8rem; text-align: right; -moz-appearance: textfield; }
-#qa-shop-dialog .qa-num::-webkit-outer-spin-button, #qa-shop-dialog .qa-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-#qa-shop-dialog .qa-text:focus, #qa-shop-dialog .qa-num:focus, #qa-shop-dialog .qa-item-denom:focus { border-color: #8a6d2b !important; }
-#qa-shop-dialog .qa-shop-title { width: 100%; font-size: 1rem; }
-#qa-shop-dialog .qa-item-img { width: 30px; height: 30px; flex: none; border: 1px solid #2a2a3a; border-radius: 3px; object-fit: cover; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-num { font-family: 'JetBrains Mono', monospace; font-size: .8rem; text-align: right; -moz-appearance: textfield; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-num::-webkit-outer-spin-button, :is(#qa-shop-dialog, .qa-popup-dialog) .qa-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-text:focus, :is(#qa-shop-dialog, .qa-popup-dialog) .qa-num:focus, :is(#qa-shop-dialog, .qa-popup-dialog) .qa-item-denom:focus { border-color: #8a6d2b !important; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-title { width: 100%; font-size: 1rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-item-img { width: 30px; height: 30px; flex: none; border: 1px solid #2a2a3a; border-radius: 3px; object-fit: cover; }
 
 /* Shop list */
-#qa-shop-dialog .qa-shop-row label { gap: .55rem; }
-#qa-shop-dialog .qa-shop-row .btn { padding: .3rem .7rem; }
-#qa-shop-dialog .qa-del { padding: .3rem .55rem !important; }
-#qa-shop-dialog .qa-del.armed { color: #f0ece4 !important; background: #7a2828 !important; border-color: #c44e4e !important; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-row label { gap: .55rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-row .btn { padding: .3rem .7rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-del { padding: .3rem .55rem !important; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-del.armed { color: #f0ece4 !important; background: #7a2828 !important; border-color: #c44e4e !important; }
 
 /* Editor rows: image · name · price+coin · stock · remove */
-#qa-shop-dialog .qa-shop-cols, #qa-shop-dialog .qa-ware-cols { display: grid; gap: .5rem; align-items: end; }
-#qa-shop-dialog .qa-shop-cols { grid-template-columns: 1fr 9.5rem 4rem 2.1rem; padding: 0 .45rem 0 calc(.45rem + 30px + .5rem); }
-#qa-shop-dialog .qa-shop-item .qa-item-name { flex: 1; min-width: 0; }
-#qa-shop-dialog .qa-price { display: flex; align-items: center; gap: .25rem; flex: none; }
-#qa-shop-dialog .qa-shop-item .qa-price { width: 9.5rem; }
-#qa-shop-dialog .qa-item-price, #qa-shop-dialog .qa-ware-price { width: 4.6rem; }
-#qa-shop-dialog .qa-item-denom { width: 4.4rem; padding: 0 .25rem; }
-#qa-shop-dialog .qa-item-stock { width: 4rem; flex: none; text-align: center; }
-#qa-shop-dialog .qa-dropzone {
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-cols, :is(#qa-shop-dialog, .qa-popup-dialog) .qa-ware-cols { display: grid; gap: .5rem; align-items: end; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-cols { grid-template-columns: 1fr 9.5rem 4rem 2.1rem; padding: 0 .45rem 0 calc(.45rem + 30px + .5rem); }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-item .qa-item-name { flex: 1; min-width: 0; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-price { display: flex; align-items: center; gap: .25rem; flex: none; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-item .qa-price { width: 9.5rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-item-price, :is(#qa-shop-dialog, .qa-popup-dialog) .qa-ware-price { width: 4.6rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-item-denom { width: 4.4rem; padding: 0 .25rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-item-stock { width: 4rem; flex: none; text-align: center; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-dropzone {
   margin: .4rem 0; padding: .9rem .6rem; text-align: center;
   border: 1px dashed #8a6d2b; border-radius: 3px; color: #7a7770; font-size: .85rem;
   background: rgba(201,168,76,.04); transition: background .1s, color .1s;
 }
-#qa-shop-dialog .qa-dropzone.over { background: rgba(201,168,76,.15); color: #e8c65a; }
-#qa-shop-dialog .qa-add-custom { padding: .3rem .8rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-dropzone.over { background: rgba(201,168,76,.15); color: #e8c65a; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-add-custom { padding: .3rem .8rem; }
 
 /* Visit rows: image · name/stock · price · qty · line total */
-#qa-shop-dialog .qa-ware-cols { grid-template-columns: 1fr 6.6rem 7.2rem 5rem; padding: 0 .45rem 0 calc(.45rem + 30px + .5rem); }
-#qa-shop-dialog .qa-ware-cols span:not(:first-child), #qa-shop-dialog .qa-shop-cols span:not(:first-child) { text-align: center; }
-#qa-shop-dialog .qa-ware-name { flex-direction: column; align-items: flex-start !important; gap: 0 !important; min-width: 0; cursor: default !important; }
-#qa-shop-dialog .qa-ware .qa-price { width: 6.6rem; }
-#qa-shop-dialog .qa-denom { font-family: 'JetBrains Mono', monospace; font-size: .75rem; color: #7a7770; }
-#qa-shop-dialog .qa-ware-price.edited { color: #e8c65a; border-color: #8a6d2b !important; }
-#qa-shop-dialog .qa-ware .num-input { flex: none; }
-#qa-shop-dialog .qa-ware .num-input input { width: 2.6rem; }
-#qa-shop-dialog .qa-line-total { width: 5rem; flex: none; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: .8rem; color: #f0ece4; }
-#qa-shop-dialog .qa-ware.qa-sold-out { opacity: .5; }
-#qa-shop-dialog .qa-purse { color: #e8c65a; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-ware-cols { grid-template-columns: 1fr 6.6rem 7.2rem 5rem; padding: 0 .45rem 0 calc(.45rem + 30px + .5rem); }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-ware-cols span:not(:first-child), :is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-cols span:not(:first-child) { text-align: center; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-ware-name { flex-direction: column; align-items: flex-start !important; gap: 0 !important; min-width: 0; cursor: default !important; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-ware .qa-price { width: 6.6rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-denom { font-family: 'JetBrains Mono', monospace; font-size: .75rem; color: #7a7770; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-ware-price.edited { color: #e8c65a; border-color: #8a6d2b !important; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-ware .num-input { flex: none; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-ware .num-input input { width: 2.6rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-line-total { width: 5rem; flex: none; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: .8rem; color: #f0ece4; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-ware.qa-sold-out { opacity: .5; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-purse { color: #e8c65a; }
 
 @media (max-width: 560px) {
-  #qa-shop-dialog .qa-shop-cols, #qa-shop-dialog .qa-ware-cols { display: none; }
-  #qa-shop-dialog .qa-shop-item, #qa-shop-dialog .qa-ware { flex-wrap: wrap; }
-  #qa-shop-dialog .qa-shop-item .qa-item-name, #qa-shop-dialog .qa-ware-name { flex: 1 1 calc(100% - 40px); }
+  :is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-cols, :is(#qa-shop-dialog, .qa-popup-dialog) .qa-ware-cols { display: none; }
+  :is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-item, :is(#qa-shop-dialog, .qa-popup-dialog) .qa-ware { flex-wrap: wrap; }
+  :is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-item .qa-item-name, :is(#qa-shop-dialog, .qa-popup-dialog) .qa-ware-name { flex: 1 1 calc(100% - 40px); }
   #qa-overlay.qa-floating #qa-shop-dialog, #qa-shop-overlay.qa-floating #qa-shop-dialog { left: 8px; top: 8px; }
 }
 
-#qa-shop-dialog .qa-text, #qa-shop-dialog .qa-num, #qa-shop-dialog .qa-item-denom { box-sizing: border-box; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-text, :is(#qa-shop-dialog, .qa-popup-dialog) .qa-num, :is(#qa-shop-dialog, .qa-popup-dialog) .qa-item-denom { box-sizing: border-box; }
 
 /* Receipt card */
 .qa-card .qa-receipt-head { display: flex; align-items: baseline; gap: .5em; }
@@ -72,54 +72,106 @@
 .qa-card .qa-was { color: #a23030; font-weight: 700; }
 
 /* Compendium picker in the editor */
-#qa-shop-dialog .qa-pack-row { gap: .5rem; margin-bottom: .4rem; }
-#qa-shop-dialog .qa-pack-row .qa-select { flex: 1; min-width: 0; height: 1.9rem; }
-#qa-shop-dialog .qa-pack-row .btn { padding: .3rem .8rem; flex: none; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-pack-row { gap: .5rem; margin-bottom: .4rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-pack-row .qa-select { flex: 1; min-width: 0; height: 1.9rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-pack-row .btn { padding: .3rem .8rem; flex: none; }
 
 /* The shared dialog styles strip borders/background from every number input;
    give the shop's price/stock boxes theirs back (more specific + !important). */
-#qa-shop-dialog input.qa-num[type=number] {
+:is(#qa-shop-dialog, .qa-popup-dialog) input.qa-num[type=number] {
   background: #0a0a0f !important; border: 1px solid #2a2a3a !important;
 }
-#qa-shop-dialog input.qa-num[type=number]:focus { border-color: #8a6d2b !important; }
-#qa-shop-dialog input.qa-ware-price.edited[type=number] { border-color: #8a6d2b !important; color: #e8c65a !important; }
+:is(#qa-shop-dialog, .qa-popup-dialog) input.qa-num[type=number]:focus { border-color: #8a6d2b !important; }
+:is(#qa-shop-dialog, .qa-popup-dialog) input.qa-ware-price.edited[type=number] { border-color: #8a6d2b !important; color: #e8c65a !important; }
 
 /* Item details (chevron) */
-#qa-shop-dialog .qa-shop-entry + .qa-shop-entry { margin-top: .2rem; }
-#qa-shop-dialog .qa-shop-entry .player-row { margin: 0; }
-#qa-shop-dialog .qa-shop-cols { grid-template-columns: 1fr 9.5rem 4rem 2.1rem 2.1rem; }
-#qa-shop-dialog .qa-chev { padding: .3rem 0 !important; width: 2.1rem; flex: none; text-align: center; }
-#qa-shop-dialog .qa-chev i { transition: transform .15s ease; }
-#qa-shop-dialog .qa-shop-entry.open .qa-chev i { transform: rotate(180deg); }
-#qa-shop-dialog .qa-shop-entry.open .qa-shop-item { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-color: #8a6d2b; }
-#qa-shop-dialog .qa-item-details {
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-entry + .qa-shop-entry { margin-top: .2rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-entry .player-row { margin: 0; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-cols { grid-template-columns: 1fr 9.5rem 4rem 2.1rem 2.1rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-chev { padding: .3rem 0 !important; width: 2.1rem; flex: none; text-align: center; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-chev i { transition: transform .15s ease; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-entry.open .qa-chev i { transform: rotate(180deg); }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-entry.open .qa-shop-item { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-color: #8a6d2b; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-item-details {
   background: #0e0e15; border: 1px solid #8a6d2b; border-top: none; border-radius: 0 0 3px 3px;
   padding: .6rem .65rem .55rem;
 }
-#qa-shop-dialog .qa-details-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; margin-bottom: .5rem; }
-#qa-shop-dialog .qa-details-effect { grid-template-columns: 8rem minmax(0, 1fr) 9rem; }
-#qa-shop-dialog .qa-item-details label {
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-details-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; margin-bottom: .5rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-details-effect { grid-template-columns: 8rem minmax(0, 1fr) 9rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-item-details label {
   display: flex; flex-direction: column; gap: .2rem; min-width: 0;
   font-family: 'Cinzel', serif; font-size: .6rem; letter-spacing: .1em; text-transform: uppercase; color: #c9a84c;
 }
-#qa-shop-dialog .qa-item-details .qa-select,
-#qa-shop-dialog .qa-item-details .qa-text,
-#qa-shop-dialog .qa-item-details .qa-num {
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-item-details .qa-select,
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-item-details .qa-text,
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-item-details .qa-num {
   width: 100%; height: 1.9rem; letter-spacing: 0; text-transform: none; font-family: 'Crimson Text', serif; font-size: .85rem;
 }
-#qa-shop-dialog .qa-item-details .qa-num { font-family: 'JetBrains Mono', monospace; text-align: left; }
-#qa-shop-dialog .qa-item-details :disabled { opacity: .4; }
-#qa-shop-dialog .qa-d-description { height: auto !important; min-height: 4.5rem; padding: .35rem .45rem !important; resize: vertical; line-height: 1.35; }
-#qa-shop-dialog .qa-details-actions { display: flex; align-items: center; justify-content: flex-end; gap: .6rem; margin-top: .5rem; }
-#qa-shop-dialog .qa-details-actions .qa-note { margin: 0; }
-#qa-shop-dialog .qa-details-actions .btn { padding: .3rem .8rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-item-details .qa-num { font-family: 'JetBrains Mono', monospace; text-align: left; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-item-details :disabled { opacity: .4; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-d-description { height: auto !important; min-height: 4.5rem; padding: .35rem .45rem !important; resize: vertical; line-height: 1.35; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-details-actions { display: flex; align-items: center; justify-content: flex-end; gap: .6rem; margin-top: .5rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-details-actions .qa-note { margin: 0; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-details-actions .btn { padding: .3rem .8rem; }
 
 @media (max-width: 560px) {
-  #qa-shop-dialog .qa-details-grid, #qa-shop-dialog .qa-details-effect { grid-template-columns: 1fr 1fr; }
+  :is(#qa-shop-dialog, .qa-popup-dialog) .qa-details-grid, :is(#qa-shop-dialog, .qa-popup-dialog) .qa-details-effect { grid-template-columns: 1fr 1fr; }
 }
 
 /* Shop owner: dropdown + a name box when "someone else" is picked */
-#qa-shop-dialog .qa-owner-row { display: flex; gap: .5rem; }
-#qa-shop-dialog .qa-owner-row .qa-owner-select { flex: 1 1 50%; min-width: 0; height: 1.9rem; }
-#qa-shop-dialog .qa-owner-row .qa-owner-name { flex: 1 1 50%; min-width: 0; box-sizing: border-box; }
-#qa-shop-dialog .qa-owner-row .qa-owner-name[hidden] { display: none; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-owner-row { display: flex; gap: .5rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-owner-row .qa-owner-select { flex: 1 1 50%; min-width: 0; height: 1.9rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-owner-row .qa-owner-name { flex: 1 1 50%; min-width: 0; box-sizing: border-box; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-owner-row .qa-owner-name[hidden] { display: none; }
+
+/* ── Buy / Sell tabs, haggling and sale offers ─────────────────────────────── */
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-tabs { display: flex; margin: .2rem 0 .4rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-shop-tabs button { flex: 1; padding: .35rem .5rem; font-size: .75rem; }
+:is(#qa-shop-dialog, .qa-popup-dialog) input.qa-ware-price.agreed[type=number] { border-color: #5fa85f !important; color: #8fd18f !important; }
+
+/* Sell rows: image · name · value · asking · qty · total */
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-sell-cols { display: grid; gap: .5rem; align-items: end; grid-template-columns: 1fr 4.6rem 5.2rem 7.2rem 5rem; padding: 0 .45rem 0 calc(.45rem + 30px + .5rem); }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-sell-cols span:not(:first-child) { text-align: center; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-sell-value { width: 4.6rem; flex: none; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: .75rem; color: #7a7770; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-sell-ask { width: 5.2rem; flex: none; }
+:is(#qa-shop-dialog, .qa-popup-dialog) input.qa-sell-ask.edited[type=number] { border-color: #8a6d2b !important; color: #e8c65a !important; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-sell .num-input { flex: none; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-sell .num-input input { width: 2.6rem; }
+
+/* Status of an offer (waiting / counter-offer / result) */
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-offer-status {
+  margin: .6rem 0 0; padding: .55rem .7rem; border-radius: 3px; font-size: .88rem; line-height: 1.4;
+  background: #12121a; border: 1px solid #2a2a3a; display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem;
+}
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-offer-status.wait { border-color: #8a6d2b; color: #e8c65a; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-offer-status.ok { border-color: #3d6b3d; color: #8fd18f; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-offer-status.no { border-color: #6b3030; color: #e07070; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-offer-status.counter { display: block; border-color: #8a6d2b; color: #f0ece4; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-offer-status ul { margin: .35rem 0 .45rem 1.1rem; padding: 0; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-offer-status .btn { padding: .25rem .8rem; margin-left: auto; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-offer-actions { display: flex; gap: .5rem; justify-content: flex-end; }
+:is(#qa-shop-dialog, .qa-popup-dialog) .qa-offer-actions .btn { margin-left: 0; }
+
+/* GM: the offer popup */
+.qa-popup-dialog.qa-offer-dialog { width: min(540px, calc(100vw - 24px)); box-sizing: border-box; min-width: 0 !important; max-width: 560px !important; }
+.qa-offer-dialog .qa-offer-head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .7rem; margin-bottom: .3rem; color: #f0ece4; }
+.qa-offer-dialog .qa-offer-roll { flex-basis: 100%; font-family: 'JetBrains Mono', monospace; font-size: .85rem; color: #e8c65a; }
+.qa-offer-dialog .qa-offer-roll.nat20 { color: #8fd18f; }
+.qa-offer-dialog .qa-offer-roll.nat1 { color: #e07070; }
+.qa-offer-dialog .qa-offer-cols { display: grid; grid-template-columns: 1rem 1fr 4.4rem 4.4rem 5rem; gap: .5rem; padding: 0 .45rem; align-items: end; }
+.qa-offer-dialog .qa-offer-cols span:nth-child(n+3) { text-align: center; }
+.qa-offer-dialog .qa-offer-line { display: grid !important; grid-template-columns: 1rem 1fr 4.4rem 4.4rem 5rem; gap: .5rem; }
+.qa-offer-dialog .qa-offer-name { flex-direction: row; gap: .4rem !important; min-width: 0; cursor: default !important; }
+.qa-offer-dialog .qa-offer-name span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qa-offer-dialog .qa-offer-list, .qa-offer-dialog .qa-offer-ask { text-align: center; font-family: 'JetBrains Mono', monospace; font-size: .75rem; color: #7a7770; }
+.qa-offer-dialog .qa-offer-ask { color: #f0ece4; }
+.qa-offer-dialog .qa-offer-price { width: 100%; box-sizing: border-box; }
+.qa-offer-dialog input.qa-offer-price.edited[type=number] { border-color: #8a6d2b !important; color: #e8c65a !important; }
+.qa-offer-dialog .qa-offer-off { opacity: .45; }
+.qa-offer-dialog .qa-offer-state { color: #e8c65a; font-style: normal; }
+
+@media (max-width: 560px) {
+  :is(#qa-shop-dialog, .qa-popup-dialog) .qa-sell-cols { display: none; }
+  :is(#qa-shop-dialog, .qa-popup-dialog) .qa-sell { flex-wrap: wrap; }
+  :is(#qa-shop-dialog, .qa-popup-dialog) .qa-sell .qa-ware-name { flex: 1 1 calc(100% - 40px); }
+}

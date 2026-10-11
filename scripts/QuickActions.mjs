@@ -73,11 +73,11 @@ export function quickActionsTool() {
 
 // ── GM routing ───────────────────────────────────────────────────────────────
 
-function activeGM() {
+export function activeGM() {
   return game.users.activeGM ?? game.users.find(u => u.isGM && u.active) ?? null;
 }
 
-function isPrimaryGM() {
+export function isPrimaryGM() {
   return game.user.isGM && activeGM()?.id === game.user.id;
 }
 

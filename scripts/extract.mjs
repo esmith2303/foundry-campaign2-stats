@@ -19,7 +19,7 @@ export const TRACKED_FACES = [4, 6, 8, 10, 12, 20];
 // ── Roll helpers ─────────────────────────────────────────────────────────────
 
 /** Accepts a Roll instance, its JSON object, or a JSON string. */
-function asRollData(r) {
+export function asRollData(r) {
   if (!r) return null;
   if (typeof r === "string") { try { return JSON.parse(r); } catch { return null; } }
   if (typeof r !== "object") return null;          // midi's d20AttackRoll is a bare number
@@ -48,7 +48,7 @@ export function diceInRoll(rollLike) {
 }
 
 /** The kept d20 of a roll (null if none). */
-function keptD20(rollLike) {
+export function keptD20(rollLike) {
   const roll = asRollData(rollLike);
   for (const t of roll?.terms || []) {
     if (t?.faces === 20 && Array.isArray(t.results)) {
@@ -261,19 +261,20 @@ export function extractMessage(message, ctx) {
     }
   }
 
-  // ── Shop receipts (one row per item line, prices in copper) ──────────────
+  // ── Shop receipts: purchases and sales (one row per item line, prices in copper)
   const purchases = [];
-  const shop = flags[MODULE_ID]?.shopPurchase;
-  if (shop?.actorId && tracked(shop.actorId) && Array.isArray(shop.lines)) {
-    shop.lines.forEach((l, i) => {
+  for (const [kind, rec] of [["buy", flags[MODULE_ID]?.shopPurchase], ["sell", flags[MODULE_ID]?.shopSale]]) {
+    if (!rec?.actorId || !tracked(rec.actorId) || !Array.isArray(rec.lines)) continue;
+    rec.lines.forEach((l, i) => {
       const qty = Math.floor(Number(l?.qty)) || 0, unitCp = Math.round(Number(l?.unitCp));
       if (!l?.name || !(qty > 0) || !Number.isFinite(unitCp) || unitCp < 0) return;
+      const list = kind === "sell" ? l.valueCp : l.listCp;
       purchases.push({
-        actorId: shop.actorId, actorName: nameOf(shop.actorId, message.speaker?.alias),
-        shopId: shop.shopId ?? null, shopName: shop.shopTitle || "Shop", shopOwner: shop.shopOwner || null,
+        kind, actorId: rec.actorId, actorName: nameOf(rec.actorId, message.speaker?.alias),
+        shopId: rec.shopId ?? null, shopName: rec.shopTitle || "Shop", shopOwner: rec.shopOwner || null,
         itemName: l.name, itemType: l.type ?? null, qty, unitCp,
-        listCp: Number.isFinite(Number(l.listCp)) ? Math.round(Number(l.listCp)) : null,
-        key: `${messageId}:${shop.actorId}:purchase:${i}`,
+        listCp: Number.isFinite(Number(list)) ? Math.round(Number(list)) : null,
+        key: `${messageId}:${rec.actorId}:${kind === "sell" ? "sale" : "purchase"}:${i}`,
       });
     });
   }
@@ -308,7 +309,11 @@ export function summarise(results) {
       const c = (a.outcomes[o.type] ??= { success: 0, failure: 0 });
       c[o.success ? "success" : "failure"]++;
     }
-    for (const p of r.purchases ?? []) { const a = get(p.actorId, p.actorName); a.bought += p.qty; a.spentCp += p.qty * p.unitCp; }
+    for (const p of r.purchases ?? []) {
+      const a = get(p.actorId, p.actorName);
+      if (p.kind === "sell") { a.sold = (a.sold || 0) + p.qty; a.earnedCp = (a.earnedCp || 0) + p.qty * p.unitCp; }
+      else { a.bought += p.qty; a.spentCp += p.qty * p.unitCp; }
+    }
   }
   return by;
 }
@@ -336,7 +341,7 @@ export async function uploadEvents({ url, apiKey, worldId, worldName, results, c
       messages: chunk.map(r => ({ id: r.messageId, ts: r.timestamp })),
       dice: chunk.flatMap(r => r.dice.map(d => ({ m: r.messageId, a: d.actorId, n: d.actorName, d: d.dieType, f: d.face, c: d.count }))),
       outcomes: chunk.flatMap(r => r.outcomes.map(o => ({ m: r.messageId, a: o.actorId, n: o.actorName, t: o.type, s: o.success, k: o.key, v: o.amount ?? null, d: o.detail ?? null, i: o.item ?? null }))),
-      purchases: chunk.flatMap(r => (r.purchases ?? []).map(p => ({ m: r.messageId, a: p.actorId, n: p.actorName, s: p.shopId, sn: p.shopName, so: p.shopOwner, i: p.itemName, t: p.itemType, q: p.qty, u: p.unitCp, l: p.listCp, k: p.key }))),
+      purchases: chunk.flatMap(r => (r.purchases ?? []).map(p => ({ m: r.messageId, a: p.actorId, n: p.actorName, s: p.shopId, sn: p.shopName, so: p.shopOwner, kd: p.kind, i: p.itemName, t: p.itemType, q: p.qty, u: p.unitCp, l: p.listCp, k: p.key }))),
     };
     const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
     if (!res.ok) {

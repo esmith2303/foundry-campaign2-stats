@@ -170,6 +170,7 @@ async function migrateUp() {
       t.string("shop_id", 100).nullable();
       t.string("shop_name", 255).nullable();
       t.string("shop_owner", 255).nullable();
+      t.string("kind", 8).notNullable().defaultTo("buy");   // buy | sell (player sold to the shop)
       t.string("item_name", 255).notNullable();
       t.string("item_type", 40).nullable();
       t.integer("qty").notNullable();
@@ -182,9 +183,16 @@ async function migrateUp() {
       t.index(["occurred_at"]);
     });
     console.log("Created table chat_purchases");
-  } else if (!(await db.schema.hasColumn("chat_purchases", "shop_owner"))) {
-    await db.schema.alterTable("chat_purchases", (t) => t.string("shop_owner", 255).nullable());
-    console.log("Added shop_owner column to chat_purchases");
+  } else {
+    for (const [col, add] of [
+      ["shop_owner", (t) => t.string("shop_owner", 255).nullable()],
+      ["kind",       (t) => t.string("kind", 8).notNullable().defaultTo("buy")],
+    ]) {
+      if (!(await db.schema.hasColumn("chat_purchases", col))) {
+        await db.schema.alterTable("chat_purchases", add);
+        console.log(`Added ${col} column to chat_purchases`);
+      }
+    }
   }
 }
 
@@ -336,6 +344,7 @@ app.post("/api/chat-events", authMiddleware, async (req, res) => {
     purchaseRows.push({ world_id: worldId, message_id: String(p.m), occurred_at: at, actor_id: String(p.a),
                         actor_name: p.n ?? null, shop_id: p.s ? String(p.s).slice(0, 100) : null,
                         shop_name: p.sn ? String(p.sn).slice(0, 255) : null, shop_owner: p.so ? String(p.so).slice(0, 255) : null,
+                        kind: p.kd === "sell" ? "sell" : "buy",
                         item_name: String(p.i).slice(0, 255),
                         item_type: p.t ? String(p.t).slice(0, 40) : null, qty, unit_cp: unit,
                         list_cp: int(p.l), total_cp: qty * unit, event_key: String(p.k).slice(0, 200) });
@@ -671,41 +680,53 @@ app.get("/api/outcomes", authMiddleware, async (req, res) => {
 });
 
 // Shop spending for the dashboard. Amounts are in copper (100 cp = 1 gp).
+// Shop spending and selling for the dashboard. Amounts are in copper (100 cp = 1 gp).
 app.get("/api/shop-stats", authMiddleware, async (req, res) => {
   const session = req.query.session;
   try {
     const range = await sessionRange(session);
-    const base = () => applyExcludes(applyRange(db("chat_purchases"), range), req.query.exclude, req.query.excludeWorlds);
+    const all = () => applyExcludes(applyRange(db("chat_purchases"), range), req.query.exclude, req.query.excludeWorlds);
+    const buys = () => all().where("kind", "buy");
+    const sales = () => all().where("kind", "sell");
     const n = (r, ...keys) => { for (const k of keys) r[k] = Number(r[k]) || 0; return r; };
+    const sumIf = (kind, col, as) => db.raw(`SUM(CASE WHEN kind = ? THEN ${col} ELSE 0 END) as ${as}`, [kind]);
 
-    const [byActor, byShop, topItems, popular, recent, favShop] = await Promise.all([
-      base().select("actor_name").sum("total_cp as spent_cp").sum("qty as items")
-        .countDistinct("message_id as transactions").max("unit_cp as max_unit_cp")
-        .groupBy("actor_name").orderBy("spent_cp", "desc"),
-      base().select("shop_name", "shop_owner").sum("total_cp as spent_cp").sum("qty as items")
+    const [bought, sold, byShop, topItems, popular, recent, favShop] = await Promise.all([
+      buys().select("actor_name").sum("total_cp as spent_cp").sum("qty as items")
+        .countDistinct("message_id as transactions").max("unit_cp as max_unit_cp").groupBy("actor_name"),
+      sales().select("actor_name").sum("total_cp as earned_cp").sum("qty as items_sold")
+        .countDistinct("message_id as sales").groupBy("actor_name"),
+      all().select("shop_name", "shop_owner", sumIf("buy", "total_cp", "spent_cp"), sumIf("sell", "total_cp", "sold_cp"),
+          sumIf("buy", "qty", "items"), sumIf("sell", "qty", "items_sold"))
         .countDistinct("message_id as transactions").countDistinct("actor_name as buyers")
         .groupBy("shop_name", "shop_owner").orderBy("transactions", "desc"),
-      base().select("actor_name", "item_name", "shop_name", "shop_owner", "unit_cp", "list_cp", "qty", "occurred_at")
+      buys().select("actor_name", "item_name", "shop_name", "shop_owner", "unit_cp", "list_cp", "qty", "occurred_at")
         .orderBy("unit_cp", "desc").orderBy("occurred_at", "desc").limit(10),
-      base().select("item_name").sum("qty as qty").sum("total_cp as spent_cp").countDistinct("actor_name as buyers")
+      buys().select("item_name").sum("qty as qty").sum("total_cp as spent_cp").countDistinct("actor_name as buyers")
         .groupBy("item_name").orderBy("qty", "desc").limit(10),
-      base().select("actor_name", "item_name", "shop_name", "shop_owner", "unit_cp", "list_cp", "qty", "total_cp", "occurred_at")
+      all().select("kind", "actor_name", "item_name", "shop_name", "shop_owner", "unit_cp", "list_cp", "qty", "total_cp", "occurred_at")
         .orderBy("occurred_at", "desc").orderBy("id", "desc").limit(25),
-      base().select("actor_name", "shop_name", "shop_owner").countDistinct("message_id as transactions")
+      all().select("actor_name", "shop_name", "shop_owner").countDistinct("message_id as transactions")
         .groupBy("actor_name", "shop_name", "shop_owner"),
     ]);
-    // Each player's most used shop and most expensive item
-    for (const a of byActor) {
-      n(a, "spent_cp", "items", "transactions", "max_unit_cp");
+    // One row per character: what they bought and sold, favourite shop, priciest buy
+    const byActor = new Map();
+    for (const b of bought) byActor.set(b.actor_name, { ...n(b, "spent_cp", "items", "transactions", "max_unit_cp"), earned_cp: 0, items_sold: 0, sales: 0 });
+    for (const x of sold) {
+      const row = byActor.get(x.actor_name) ?? { actor_name: x.actor_name, spent_cp: 0, items: 0, transactions: 0, max_unit_cp: 0 };
+      Object.assign(row, n(x, "earned_cp", "items_sold", "sales"));
+      byActor.set(x.actor_name, row);
+    }
+    for (const a of byActor.values()) {
       const shops = favShop.filter(f => f.actor_name === a.actor_name).map(f => n(f, "transactions"))
         .sort((x, y) => y.transactions - x.transactions);
       a.favourite_shop = shops[0]?.shop_name ?? null;
       a.favourite_shop_owner = shops[0]?.shop_owner ?? null;
-      a.priciest_item = (await base().where("actor_name", a.actor_name).orderBy("unit_cp", "desc").first("item_name"))?.item_name ?? null;
+      a.priciest_item = a.items ? (await buys().where("actor_name", a.actor_name).orderBy("unit_cp", "desc").first("item_name"))?.item_name ?? null : null;
     }
     res.json({
-      byActor,
-      byShop: byShop.map(r => n(r, "spent_cp", "items", "transactions", "buyers")),
+      byActor: [...byActor.values()].sort((x, y) => y.spent_cp - x.spent_cp || y.earned_cp - x.earned_cp),
+      byShop: byShop.map(r => n(r, "spent_cp", "sold_cp", "items", "items_sold", "transactions", "buyers")),
       topItems: topItems.map(r => n(r, "unit_cp", "list_cp", "qty")),
       popular: popular.map(r => n(r, "qty", "spent_cp", "buyers")),
       recent: recent.map(r => n(r, "unit_cp", "list_cp", "qty", "total_cp")),

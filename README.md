@@ -89,22 +89,30 @@ The GM gets a **store** button in the token controls (players don't).
   or "Someone else" and type a name. The shop then shows as
   "Shop Name (Shop Owner)" in the list, the shop window, receipts and the
   dashboard. An owner picked from a sheet follows that sheet's renames.
-- **Visit** opens the shop for every player who has a character (and the GM).
-  Players pick who's buying, quantities and — if they haggle — a different
-  price. The GM's client checks stock and money, takes the coins (giving
-  change), adds the items (stacking consumables/loot), reduces stock for
-  everyone, and posts a receipt card; changed prices are flagged in red.
-  The GM must be logged in for purchases to go through. Purchases are handled
-  one at a time on the GM's client, so two players can't both buy the last
-  item and a double click can't be charged once for two lots.
+- **Visit** opens the shop for every player who has a character (and the GM),
+  with **Buy** and **Sell** tabs. The GM's client does every purchase and sale,
+  one at a time (so two players can't both buy the last item): it checks stock
+  and money, moves the items and coins (making change), updates stock for
+  everyone and posts a receipt card. The GM must be logged in.
+- **Haggling**: a player changes a price and presses **Haggle**. Their
+  Persuasion is rolled automatically and the GM gets a popup with the offer
+  and the roll: **Accept**, change the price (a **counter-offer** the player
+  accepts or declines) or **Refuse**. Agreed prices last for that visit; the
+  receipt shows the list price crossed out. The GM shopping as a character can
+  just type a price.
+- **Selling**: players offer anything physical from their sheet (not
+  containers) at an asking price — half the item's value by default; asking
+  more rolls Persuasion. The GM ticks what the shop will buy, and can counter.
+  Sold items leave the sheet, the coins arrive, and the shop adds them to its
+  wares at the price it paid + 10% (change it in the editor).
 
-Every receipt is also a stat: who bought what, from which shop, how many and
-at what price (each line of the receipt). They're uploaded with the chat log
+Every receipt is also a stat: who bought or sold what, from which shop, how
+many and at what price (each line of the receipt). They're uploaded with the chat log
 like everything else (old receipts in the log count too) and shown in the
-dashboard's **Shops** section: gold spent, purchases, biggest spender, most
-expensive item, most used shop, spending per player, shops by purchases, each
-player's favourite shop and priciest buy, the most expensive items and the
-latest purchases. API: `GET /api/shop-stats?session=…`.
+dashboard's **Shops** section: gold spent and earned, purchases, biggest
+spender, most expensive item, most used shop, spending and selling per player,
+shops by deals, each player's favourite shop and priciest buy, the most
+expensive items and the latest deals. API: `GET /api/shop-stats?session=…`.
 
 ### Dashboard Shops section
 
@@ -121,6 +129,33 @@ world ID has "test" in it (the dashboard otherwise only shows the four campaign
 PCs), so test characters show up when looking at a test world; they're tagged
 TEST in Manage Names. Install it the same way:
 `<script src="test-worlds.js"></script>`.
+
+## Combat recap
+
+When the GM ends a combat (that started and had player characters in it),
+everyone gets a **recap** popup: Victory / Combat Over, rounds, time, foes
+defeated, the **MVP** (most damage) and a card per character — damage, best
+hit, hits, kills, healing, damage taken, natural 20s and 1s — with the
+**achievements** they earned. It's also saved to chat with a "View recap"
+button. Turn it off in the module settings ("Combat recap").
+
+Numbers come from midi-qol's counters (noted at the start and end of the
+fight) plus the chat log for the fight, read the same way as the dashboard
+("+" button entries included).
+
+| Achievement | For |
+|---|---|
+| First Blood | the first hit of the fight |
+| Executioner | most kills (2+) |
+| Big Hitter | the biggest single hit |
+| Natural Born Killer / Cursed Dice | 2+ natural 20s / 1s |
+| Crit Happens | 2+ critical hits |
+| Medic | most healing |
+| Meat Shield / Untouchable | most damage taken / none at all |
+| Sharpshooter / Stormtrooper | hit / missed every attack (3+) |
+| Iron Will | passed every save (2+) |
+| Close Call | made a death save |
+| Pacifist | no attacks or damage, but healed or saved |
 
 ## Backfilling / correcting from a chat export
 

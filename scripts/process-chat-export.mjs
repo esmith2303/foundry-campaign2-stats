@@ -69,7 +69,8 @@ const results = extractAll(messages, ctx);
 console.log("\nPer-character totals in this export:");
 for (const a of Object.values(summarise(results))) {
   const o = Object.entries(a.outcomes).map(([k, v]) => `${k} ${v.success}/${v.failure}`).join("  ");
-  const shop = a.bought ? `   shop ${a.bought} items, ${(a.spentCp / 100).toFixed(2)} gp` : "";
+  const shop = (a.bought ? `   bought ${a.bought} items, ${(a.spentCp / 100).toFixed(2)} gp` : "")
+             + (a.sold ? `   sold ${a.sold} items, ${(a.earnedCp / 100).toFixed(2)} gp` : "");
   console.log(`  ${a.name.padEnd(24)} dice ${String(a.dice).padStart(5)} (d20 ${String(a.d20).padStart(4)})   ${o}${shop}`);
 }
 

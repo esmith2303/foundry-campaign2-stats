@@ -5,6 +5,7 @@ import { registerSkillCheck, openSkillCheckDialog } from "./SkillCheck.mjs";
 import { registerQuickActions, quickActionsTool, openQuickActions, QUICK_ACTIONS_TOOL } from "./QuickActions.mjs";
 import { registerShop, shopTool, openShopManager, SHOP_TOOL } from "./shop/Shop.mjs";
 import { addWindowControls } from "./windowControls.mjs";
+import { registerCombatRecap } from "./recap/CombatRecap.mjs";
 
 const MODULE_ID = "dnd-group-campaign-2-stats";
 
@@ -25,7 +26,7 @@ Hooks.once("init", () => {
 // them. Adding ours the same way keeps every popup styled as intended.
 function loadStyles() {
   const version = game.modules.get(MODULE_ID)?.version ?? "";
-  for (const file of ["styles/quick-actions.css", "styles/shop.css"]) {
+  for (const file of ["styles/quick-actions.css", "styles/shop.css", "styles/recap.css"]) {
     if (document.querySelector(`link[data-qa-style="${file}"]`)) continue;
     const link = document.createElement("link");
     link.rel = "stylesheet";
@@ -45,6 +46,7 @@ Hooks.once("ready", async () => {
   registerSkillCheck();
   registerQuickActions();
   registerShop();
+  registerCombatRecap();
 
   // Clear the old live-tracking store; nothing reads it any more
   if (game.user.isGM) {

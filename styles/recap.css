@@ -1,0 +1,101 @@
+/* ── End-of-combat recap ────────────────────────────────────────────────────
+   Popup (.qa-recap-dialog) in the module's gold-on-dark style, and the chat
+   card (.qa-recap-card) on the usual parchment card body. */
+
+.qa-popup-dialog.qa-recap-dialog {
+  width: min(780px, calc(100vw - 24px)); max-width: 780px !important; min-width: 0 !important; box-sizing: border-box;
+  background: radial-gradient(120% 80% at 50% 0%, #1b1622 0%, #0a0a0f 60%) !important;
+  box-shadow: 0 16px 60px rgba(0,0,0,.8), 0 0 50px rgba(201,168,76,.18) !important;
+}
+.qa-recap-dialog .title {
+  font-size: 1.6rem !important; letter-spacing: .3em !important; margin-bottom: .2rem !important; border-bottom: none !important;
+  color: #e8c65a !important; text-shadow: 0 0 18px rgba(232,198,90,.45); background: transparent !important; position: static !important;
+  animation: qaRecapTitle .7s cubic-bezier(.2,.9,.3,1.3) both;
+}
+.qa-recap-sub {
+  text-align: center; font-family: 'JetBrains Mono', monospace; font-size: .72rem; letter-spacing: .06em; color: #7a7770;
+  padding-bottom: .8rem; margin-bottom: 1rem; border-bottom: 1px solid #8a6d2b;
+  animation: qaRecapIn .5s .15s ease both;
+}
+
+/* MVP */
+.qa-recap-mvp {
+  display: flex; align-items: center; gap: 1rem; padding: .8rem 1rem; margin-bottom: 1rem; border-radius: 4px;
+  border: 1px solid #c9a84c; background: linear-gradient(100deg, rgba(201,168,76,.16), rgba(201,168,76,.03) 60%, transparent);
+  position: relative; overflow: hidden; animation: qaRecapIn .55s .25s ease both;
+}
+.qa-recap-mvp::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgba(255,240,190,.22) 50%, transparent 65%);
+  transform: translateX(-120%); animation: qaRecapShine 2.4s 1s ease-in-out;
+}
+.qa-recap-mvp-label { font-family: 'Cinzel', serif; font-size: .7rem; letter-spacing: .25em; color: #e8c65a; }
+.qa-recap-mvp-name { font-family: 'Cinzel', serif; font-weight: 600; font-size: 1.25rem; color: #f0ece4; line-height: 1.2; }
+.qa-recap-mvp-line { font-family: 'JetBrains Mono', monospace; font-size: .78rem; color: #c9a84c; margin-top: .15rem; }
+
+/* Portraits */
+.qa-recap-portrait {
+  width: 36px; height: 36px; flex: none; border-radius: 50%; object-fit: cover; object-position: top;
+  border: 1px solid #8a6d2b; background: #1a1a28;
+}
+.qa-recap-portrait.big { width: 68px; height: 68px; border: 2px solid #e8c65a; box-shadow: 0 0 16px rgba(232,198,90,.35); }
+.qa-recap-initial { display: inline-flex; align-items: center; justify-content: center; font-family: 'Cinzel', serif; color: #c9a84c; }
+
+/* One card per character */
+.qa-recap-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+.qa-recap-pc {
+  background: #12121a; border: 1px solid #2a2a3a; border-radius: 4px; padding: .7rem .75rem .65rem;
+  animation: qaRecapIn .5s calc(.4s + var(--i, 0) * .12s) ease both;
+}
+.qa-recap-pc-head { display: flex; align-items: center; gap: .55rem; margin-bottom: .55rem; }
+.qa-recap-pc-name { flex: 1; min-width: 0; font-family: 'Cinzel', serif; font-weight: 600; color: #f0ece4; font-size: .95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qa-recap-crown { color: #e8c65a; }
+.qa-recap-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .3rem; }
+.qa-recap-stat { background: #0a0a0f; border: 1px solid #1f1f2e; border-radius: 3px; padding: .25rem .3rem; text-align: center; min-width: 0; }
+.qa-recap-stat span { display: block; font-family: 'Cinzel', serif; font-size: .55rem; letter-spacing: .1em; text-transform: uppercase; color: #7a7770; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qa-recap-stat b { display: block; font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: .95rem; color: #f0ece4; }
+.qa-recap-stat.gold b { color: #e8c65a; }
+.qa-recap-stat.red b { color: #e07070; }
+
+/* Achievement chips */
+.qa-recap-chips { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .55rem; }
+.qa-recap-dialog .qa-recap-chip {
+  display: inline-flex; align-items: center; gap: .35rem; padding: .18rem .55rem; border-radius: 999px;
+  border: 1px solid #8a6d2b; background: rgba(201,168,76,.1); color: #e8c65a;
+  font-family: 'Cinzel', serif; font-size: .68rem; font-weight: 600; letter-spacing: .04em; cursor: help;
+  animation: qaRecapPop .45s calc(.9s + var(--j, 0) * .09s) cubic-bezier(.2,.9,.3,1.5) both;
+}
+.qa-recap-dialog .qa-recap-chip i { font-size: .72rem; }
+.qa-recap-none { font-size: .78rem; font-style: italic; color: #5c5a55; }
+.qa-recap-party {
+  margin-top: 1rem; padding-top: .7rem; border-top: 1px solid #2a2a3a; text-align: center;
+  font-family: 'JetBrains Mono', monospace; font-size: .75rem; color: #7a7770;
+  animation: qaRecapIn .5s 1.1s ease both;
+}
+.qa-recap-party b { color: #f0ece4; }
+
+@keyframes qaRecapIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes qaRecapPop { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+@keyframes qaRecapTitle { from { opacity: 0; transform: scale(.7); letter-spacing: .6em; } to { opacity: 1; transform: none; } }
+@keyframes qaRecapShine { to { transform: translateX(120%); } }
+@media (prefers-reduced-motion: reduce) {
+  .qa-recap-dialog *, .qa-recap-dialog .title, .qa-recap-mvp::after { animation: none !important; }
+}
+@media (max-width: 640px) {
+  .qa-recap-grid { grid-template-columns: 1fr; }
+  .qa-recap-dialog .title { font-size: 1.25rem !important; }
+}
+
+/* Chat card */
+.qa-recap-card .qa-recap-crown { color: #a8841f; }
+.qa-recap-card .qa-recap-chips { margin-top: .3em; gap: .25em; }
+.qa-recap-card .qa-recap-chip {
+  display: inline-flex; align-items: center; gap: .3em; padding: .05em .45em; border-radius: 999px;
+  border: 1px solid #b89a4a; background: #f3ead2; color: #6b5317; font-size: .78em; font-weight: 600;
+}
+.qa-recap-card .qa-recap-open {
+  display: block; width: 100%; margin-top: .5em; padding: .3em; cursor: pointer;
+  font-family: 'Cinzel', serif; font-size: .8em; letter-spacing: .08em; text-transform: uppercase;
+  background: #1a1a28; color: #e8c65a; border: 1px solid #8a6d2b; border-radius: 3px;
+}
+.qa-recap-card .qa-recap-open:hover { background: #22223a; }

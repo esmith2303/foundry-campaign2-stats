@@ -54,3 +54,15 @@ export function pay(currency, costCp) {
   }
   return c;
 }
+
+/** Add `cp` to a wallet as gold, silver and copper. Returns the new wallet. */
+export function receive(currency, cp) {
+  const c = cleanWallet(currency);
+  let rem = Math.max(0, Math.round(cp));
+  for (const d of ["gp", "sp", "cp"]) {
+    const n = Math.floor(rem / COIN_CP[d]);
+    c[d] += n;
+    rem -= n * COIN_CP[d];
+  }
+  return c;
+}

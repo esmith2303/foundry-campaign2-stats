@@ -51,13 +51,13 @@ function injectStylesOnce() {
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Crimson+Text:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
     /* ─── DIALOG ───────────────────────────────────────────────────────── */
-    :is(#skill-check-overlay, #qa-overlay, #qa-shop-overlay) {
+    :is(#skill-check-overlay, #qa-overlay, #qa-shop-overlay, .qa-popup-overlay) {
       position:fixed; inset:0; background:rgba(0,0,0,.55);
       z-index:99999; display:flex; align-items:center; justify-content:center;
       opacity:0; transition:opacity .15s ease;
     }
-    :is(#skill-check-overlay, #qa-overlay, #qa-shop-overlay).shown { opacity:1; }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) {
+    :is(#skill-check-overlay, #qa-overlay, #qa-shop-overlay, .qa-popup-overlay).shown { opacity:1; }
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) {
       --bg:#0a0a0f;--bg2:#12121a;--bg3:#1a1a28;--bg4:#22223a;
       --gold:#c9a84c;--gold-dim:#8a6d2b;--gold-bright:#e8c65a;
       --text:#d4d0c8;--text-dim:#7a7770;--text-bright:#f0ece4;
@@ -72,7 +72,7 @@ function injectStylesOnce() {
       min-width:380px; max-width:520px; max-height:90vh;
       overflow:auto;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .title {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .title {
       font-family:'Cinzel',serif; font-weight:600;
       font-size:1rem; color:#c9a84c;
       letter-spacing:.12em; text-transform:uppercase;
@@ -80,41 +80,41 @@ function injectStylesOnce() {
       margin:0 0 .8rem 0; padding-bottom:.6rem;
       border-bottom:1px solid #8a6d2b;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .field { margin:.55rem 0; }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .field-label {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .field { margin:.55rem 0; }
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .field-label {
       font-family:'Cinzel',serif; font-size:.65rem;
       letter-spacing:.1em; text-transform:uppercase;
       color:#c9a84c; margin-bottom:.25rem;
     }
 
     /* Aggressive button reset to defeat any Foundry/dnd5e :hover/:focus borders */
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) button {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) button {
       border:1px solid transparent !important;
       outline:none !important;
       box-shadow:none !important;
       background-image:none !important;
       text-shadow:none !important;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) button:focus,
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) button:hover,
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) button:active,
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) button:focus-visible {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) button:focus,
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) button:hover,
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) button:active,
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) button:focus-visible {
       border:1px solid transparent !important;
       outline:none !important;
       box-shadow:none !important;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) input[type=number] {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) input[type=number] {
       outline:none !important; box-shadow:none !important;
       background:transparent !important;
       border:none !important;
     }
 
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .num-input {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .num-input {
       display:inline-flex; align-items:center;
       background:#12121a; border:1px solid #2a2a3a !important;
       border-radius:3px; overflow:hidden;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .num-input button {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .num-input button {
       background:#1a1a28 !important; color:#c9a84c !important;
       width:1.9rem; height:1.9rem;
       font-family:'JetBrains Mono',monospace; font-weight:700;
@@ -124,21 +124,21 @@ function injectStylesOnce() {
       line-height:1;
       display:inline-flex; align-items:center; justify-content:center;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .num-input button:hover {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .num-input button:hover {
       background:#22223a !important; color:#e8c65a !important;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .num-input input {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .num-input input {
       color:#f0ece4 !important;
       width:3.5rem; text-align:center;
       font-family:'JetBrains Mono',monospace; font-weight:600; font-size:.9rem;
       padding:0;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .num-input input::-webkit-outer-spin-button,
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .num-input input::-webkit-inner-spin-button {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .num-input input::-webkit-outer-spin-button,
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .num-input input::-webkit-inner-spin-button {
       -webkit-appearance:none; margin:0;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .players { margin:.5rem 0; }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .player-row {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .players { margin:.5rem 0; }
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .player-row {
       display:flex; align-items:center; gap:.5rem;
       padding:.35rem .45rem;
       margin:.2rem 0;
@@ -146,20 +146,20 @@ function injectStylesOnce() {
       border:1px solid #2a2a3a;
       border-radius:3px;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .player-row label {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .player-row label {
       flex:1; display:flex; align-items:center; gap:.5rem;
       cursor:pointer; color:#f0ece4;
       font-size:.85rem;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) input[type=checkbox] {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) input[type=checkbox] {
       accent-color:#c9a84c;
       width:.95rem; height:.95rem;
       cursor:pointer;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .mode-toggle {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .mode-toggle {
       display:inline-flex; border:1px solid #2a2a3a; border-radius:3px; overflow:hidden;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .mode-toggle button {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .mode-toggle button {
       background:#1a1a28 !important; color:#7a7770 !important;
       padding:.25rem .55rem;
       font-family:'JetBrains Mono',monospace; font-size:.65rem;
@@ -167,47 +167,47 @@ function injectStylesOnce() {
       transition:background .1s, color .1s;
       text-transform:uppercase;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .mode-toggle button.active {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .mode-toggle button.active {
       background:#8a6d2b !important; color:#0a0a0f !important;
       font-weight:700;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .mode-toggle button:hover:not(.active) {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .mode-toggle button:hover:not(.active) {
       background:#22223a !important; color:#c9a84c !important;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .checkbox-row {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .checkbox-row {
       display:flex; gap:1.2rem; margin:.6rem 0 .2rem 0;
       padding:.45rem .5rem;
       background:#12121a; border:1px solid #2a2a3a; border-radius:3px;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .checkbox-row label,
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .group-row label {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .checkbox-row label,
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .group-row label {
       display:flex; align-items:center; gap:.45rem;
       font-size:.8rem; color:#f0ece4;
       cursor:pointer;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .group-row {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .group-row {
       display:flex; align-items:center; gap:.7rem;
       padding:.45rem .5rem;
       background:#12121a; border:1px solid #2a2a3a; border-radius:3px;
       margin:.4rem 0;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .group-threshold {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .group-threshold {
       display:flex; align-items:center; gap:.5rem;
       margin-left:auto;
       opacity:.4; pointer-events:none;
       transition:opacity .15s;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .group-threshold.enabled { opacity:1; pointer-events:auto; }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .group-threshold-label {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .group-threshold.enabled { opacity:1; pointer-events:auto; }
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .group-threshold-label {
       font-size:.7rem; color:#7a7770;
       font-family:'JetBrains Mono',monospace; letter-spacing:.05em;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .actions {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .actions {
       display:flex; gap:.5rem; justify-content:flex-end;
       margin-top:.9rem; padding-top:.6rem;
       border-top:1px solid #2a2a3a;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .btn {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .btn {
       padding:.4rem 1rem;
       font-family:'Cinzel',serif; font-size:.7rem;
       letter-spacing:.1em; text-transform:uppercase;
@@ -216,15 +216,15 @@ function injectStylesOnce() {
       cursor:pointer;
       transition:background .1s, color .1s, border-color .1s;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .btn:hover {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .btn:hover {
       background:#22223a !important; color:#c9a84c !important;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .btn.primary {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .btn.primary {
       background:#8a6d2b !important; color:#0a0a0f !important;
       border-color:#c9a84c !important;
       font-weight:700;
     }
-    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog) .btn.primary:hover {
+    :is(#skill-check-dialog, #qa-dialog, #qa-shop-dialog, .qa-popup-dialog) .btn.primary:hover {
       background:#c9a84c !important; color:#0a0a0f !important;
     }
 
