@@ -221,13 +221,20 @@ export function extractMessage(message, ctx) {
     const other = abilityUse.other;
     if (other) {
       const n = (v) => Math.max(0, Math.min(500, Math.floor(Number(v)) || 0));
-      const hits = n(other.hits), attacks = Math.max(n(other.attacks), hits);
-      for (let i = 0; i < attacks; i++) addOutcome(who, "attack", i < hits, `other${i}`, alias, null, { detail: "manual" });
+      // `attacks` may be lower than the hits + misses (attack already counted
+      // elsewhere, only the result is being added): those still count in hit %
+      // ("manual-hit") but aren't added to the attack total ("manual").
+      const hits = n(other.hits), attacks = n(other.attacks);
+      const rows = hits + Math.max(0, attacks - hits, n(other.fumbles));   // fumbles are misses
+      for (let i = 0; i < rows; i++) addOutcome(who, "attack", i < hits, `other${i}`, alias, null, { detail: i < attacks ? "manual" : "manual-hit" });
       for (let i = 0; i < n(other.saveSuccess); i++) addOutcome(who, "save", true, `otherS${i}`, alias, null, { detail: "manual" });
       for (let i = 0; i < n(other.saveFail); i++) addOutcome(who, "save", false, `otherF${i}`, alias, null, { detail: "manual" });
       if (n(other.crits)) addOutcome(who, "crit", true, "other", alias, n(other.crits));
       if (n(other.fumbles)) addOutcome(who, "fumble", true, "other", alias, n(other.fumbles));
       if (hits && n(other.maxHit)) addOutcome(who, "max_hit", true, "other", alias, n(other.maxHit));
+      // Corrections: the server moves this many misses → hits / failed → passed saves
+      if (n(other.missToHit)) addOutcome(who, "attack_fix", true, "other", alias, n(other.missToHit));
+      if (n(other.failToPass)) addOutcome(who, "save_fix", true, "other", alias, n(other.failToPass));
     }
   }
 
@@ -254,12 +261,29 @@ export function extractMessage(message, ctx) {
     }
   }
 
+  // ── Shop receipts (one row per item line, prices in copper) ──────────────
+  const purchases = [];
+  const shop = flags[MODULE_ID]?.shopPurchase;
+  if (shop?.actorId && tracked(shop.actorId) && Array.isArray(shop.lines)) {
+    shop.lines.forEach((l, i) => {
+      const qty = Math.floor(Number(l?.qty)) || 0, unitCp = Math.round(Number(l?.unitCp));
+      if (!l?.name || !(qty > 0) || !Number.isFinite(unitCp) || unitCp < 0) return;
+      purchases.push({
+        actorId: shop.actorId, actorName: nameOf(shop.actorId, message.speaker?.alias),
+        shopId: shop.shopId ?? null, shopName: shop.shopTitle || "Shop",
+        itemName: l.name, itemType: l.type ?? null, qty, unitCp,
+        listCp: Number.isFinite(Number(l.listCp)) ? Math.round(Number(l.listCp)) : null,
+        key: `${messageId}:${shop.actorId}:purchase:${i}`,
+      });
+    });
+  }
+
   const dice = [];
   for (const [k, count] of diceCounts) {
     const [actorId, faces, value] = k.split("|");
     dice.push({ actorId, actorName: nameOf(actorId, message.speaker?.alias), dieType: +faces, face: +value, count });
   }
-  return { messageId, timestamp: message.timestamp, dice, outcomes };
+  return { messageId, timestamp: message.timestamp, dice, outcomes, purchases };
 }
 
 /** Extract a whole chat log. Returns per-message results (including empty ones). */
@@ -275,7 +299,7 @@ export function extractAll(messages, ctx) {
 /** Per-actor totals, for logging / dry runs. */
 export function summarise(results) {
   const by = {};
-  const get = (id, name) => (by[id] ??= { name, dice: 0, d20: 0, outcomes: {}, healing: 0 });
+  const get = (id, name) => (by[id] ??= { name, dice: 0, d20: 0, outcomes: {}, healing: 0, bought: 0, spentCp: 0 });
   for (const r of results) {
     for (const d of r.dice) { const a = get(d.actorId, d.actorName); a.dice += d.count; if (d.dieType === 20) a.d20 += d.count; }
     for (const o of r.outcomes) {
@@ -284,6 +308,7 @@ export function summarise(results) {
       const c = (a.outcomes[o.type] ??= { success: 0, failure: 0 });
       c[o.success ? "success" : "failure"]++;
     }
+    for (const p of r.purchases ?? []) { const a = get(p.actorId, p.actorName); a.bought += p.qty; a.spentCp += p.qty * p.unitCp; }
   }
   return by;
 }
@@ -311,6 +336,7 @@ export async function uploadEvents({ url, apiKey, worldId, worldName, results, c
       messages: chunk.map(r => ({ id: r.messageId, ts: r.timestamp })),
       dice: chunk.flatMap(r => r.dice.map(d => ({ m: r.messageId, a: d.actorId, n: d.actorName, d: d.dieType, f: d.face, c: d.count }))),
       outcomes: chunk.flatMap(r => r.outcomes.map(o => ({ m: r.messageId, a: o.actorId, n: o.actorName, t: o.type, s: o.success, k: o.key, v: o.amount ?? null, d: o.detail ?? null, i: o.item ?? null }))),
+      purchases: chunk.flatMap(r => (r.purchases ?? []).map(p => ({ m: r.messageId, a: p.actorId, n: p.actorName, s: p.shopId, sn: p.shopName, i: p.itemName, t: p.itemType, q: p.qty, u: p.unitCp, l: p.listCp, k: p.key }))),
     };
     const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
     if (!res.ok) {

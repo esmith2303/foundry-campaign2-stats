@@ -47,7 +47,7 @@ Always at the top, for every character:
 | Add Damage | Optional weapon or spell, a set amount or a dice roll (dice buttons + modifier, or type a formula), damage type (defaults to the weapon's, overridable). Stats only — applied to nobody. |
 | Add Healing | Pick a PC (or "None" for stats only) and a set amount or dice roll; the PC is healed (never past max HP). |
 | Take Damage | A set amount or dice roll, optional damage type, and "Apply to character sheet" (on by default). On: the amount comes straight off HP (temp HP first; resistances, vulnerabilities and immunities are ignored). Off: stats only, for damage already on the sheet. |
-| Add Other | Stats only. +/− counts of attacks, hits (plus the biggest hit's damage, for Max Hit), crits, fumbles, saves passed and saves failed. Hits and fumbles count as attacks and crits as hits, so the bigger counts follow them up. |
+| Add Other | Stats only. +/− counts of attacks, hits (plus an optional biggest hit, which replaces Max Hit only if bigger), crits, fumbles, saves passed and saves failed. Adding hits or fumbles adds attacks and crits add hits; Attacks can then be lowered (even below hits) when the attack is already counted but no hit/miss was (e.g. no target). **Corrections** (Miss → hit, Failed save → passed) fix a result Foundry got wrong, e.g. the wrong AC or DC: they move an already-recorded miss / failed save without adding an attack or save. |
 
 Then the character's sheet abilities, alphabetically:
 
@@ -91,6 +91,24 @@ The GM gets a **store** button in the token controls (players don't).
   change), adds the items (stacking consumables/loot), reduces stock for
   everyone, and posts a receipt card; changed prices are flagged in red.
   The GM must be logged in for purchases to go through.
+
+Every receipt is also a stat: who bought what, from which shop, how many and
+at what price (each line of the receipt). They're uploaded with the chat log
+like everything else (old receipts in the log count too) and shown in the
+dashboard's **Shops** section: gold spent, purchases, biggest spender, most
+expensive item, most used shop, spending per player, shops by purchases, each
+player's favourite shop and priciest buy, the most expensive items and the
+latest purchases. API: `GET /api/shop-stats?session=…`.
+
+### Dashboard Shops section
+
+`dashboard/shops.js` adds the Shops section to the existing dashboard. Copy it
+next to the dashboard's `index.html` and add one line before `</body>`, after
+the dashboard's own script:
+
+```html
+<script src="shops.js"></script>
+```
 
 ## Backfilling / correcting from a chat export
 

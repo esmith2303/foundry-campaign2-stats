@@ -135,7 +135,7 @@ async function migrateUp() {
       t.timestamp("occurred_at").notNullable();
       t.string("actor_id", 100).notNullable();
       t.string("actor_name", 255).nullable();
-      t.string("outcome_type", 30).notNullable(); // attack, save, check, death, heal, damage, kill, damage_taken, crit, fumble, max_hit
+      t.string("outcome_type", 30).notNullable(); // attack, save, check, death, heal, damage, kill, damage_taken, crit, fumble, max_hit, attack_fix, save_fix
       t.boolean("success").notNullable();
       t.string("event_key", 200).notNullable();
       t.integer("amount").nullable();             // e.g. HP healed / damage dealt via a Quick Action
@@ -157,6 +157,30 @@ async function migrateUp() {
         console.log(`Added ${col} column to chat_outcomes`);
       }
     }
+  }
+  // One row per item line on a shop receipt (prices in copper)
+  if (!(await db.schema.hasTable("chat_purchases"))) {
+    await db.schema.createTable("chat_purchases", (t) => {
+      t.increments("id").primary();
+      t.string("world_id", 100).notNullable();
+      t.string("message_id", 64).notNullable();
+      t.timestamp("occurred_at").notNullable();
+      t.string("actor_id", 100).notNullable();
+      t.string("actor_name", 255).nullable();
+      t.string("shop_id", 100).nullable();
+      t.string("shop_name", 255).nullable();
+      t.string("item_name", 255).notNullable();
+      t.string("item_type", 40).nullable();
+      t.integer("qty").notNullable();
+      t.integer("unit_cp").notNullable();        // price paid each
+      t.integer("list_cp").nullable();           // shop's price each (differs if haggled)
+      t.integer("total_cp").notNullable();
+      t.string("event_key", 200).notNullable();
+      t.unique(["world_id", "event_key"]);
+      t.index(["world_id", "message_id"]);
+      t.index(["occurred_at"]);
+    });
+    console.log("Created table chat_purchases");
   }
 }
 
@@ -266,7 +290,7 @@ app.get("/api/health", (_req, res) => res.json({ status: "ok", db: DB_CLIENT }))
 // Body: { worldId, worldName, messages: [{id, ts}], dice: [{m,a,n,d,f,c}], outcomes: [{m,a,n,t,s,k}] }
 // Replaces everything stored for the listed messages.
 app.post("/api/chat-events", authMiddleware, async (req, res) => {
-  const { worldId, messages, dice = [], outcomes = [] } = req.body ?? {};
+  const { worldId, messages, dice = [], outcomes = [], purchases } = req.body ?? {};
   if (!worldId || !Array.isArray(messages)) {
     return res.status(400).json({ error: "Body must have worldId and a messages array." });
   }
@@ -296,17 +320,35 @@ app.post("/api/chat-events", authMiddleware, async (req, res) => {
                        detail: o.d ? String(o.d).slice(0, 60) : null, item_name: o.i ? String(o.i).slice(0, 255) : null });
   }
 
+  // Shop purchases — only replaced when the client sends them (older module
+  // versions don't, and mustn't wipe what's there)
+  const purchaseRows = [];
+  const hasPurchases = Array.isArray(purchases);
+  const int = (v) => { const x = Math.round(Number(v)); return Number.isFinite(x) ? x : null; };
+  for (const p of hasPurchases ? purchases : []) {
+    const at = tsById.get(String(p.m));
+    const qty = int(p.q), unit = int(p.u);
+    if (!at || !p.a || !p.i || !p.k || !(qty > 0) || unit === null || unit < 0) continue;
+    purchaseRows.push({ world_id: worldId, message_id: String(p.m), occurred_at: at, actor_id: String(p.a),
+                        actor_name: p.n ?? null, shop_id: p.s ? String(p.s).slice(0, 100) : null,
+                        shop_name: p.sn ? String(p.sn).slice(0, 255) : null, item_name: String(p.i).slice(0, 255),
+                        item_type: p.t ? String(p.t).slice(0, 40) : null, qty, unit_cp: unit,
+                        list_cp: int(p.l), total_cp: qty * unit, event_key: String(p.k).slice(0, 200) });
+  }
+
   try {
     await db.transaction(async (trx) => {
       for (const part of chunks(ids, 500)) {
         await trx("chat_dice").where("world_id", worldId).whereIn("message_id", part).del();
         await trx("chat_outcomes").where("world_id", worldId).whereIn("message_id", part).del();
+        if (hasPurchases) await trx("chat_purchases").where("world_id", worldId).whereIn("message_id", part).del();
       }
       for (const part of chunks(diceRows, 500)) await trx("chat_dice").insert(part);
       for (const part of chunks(outcomeRows, 500)) await trx("chat_outcomes").insert(part);
+      for (const part of chunks(purchaseRows, 500)) await trx("chat_purchases").insert(part);
     });
-    console.log(`chat-events ${worldId}: ${ids.length} messages, ${diceRows.length} dice rows, ${outcomeRows.length} outcomes`);
-    res.json({ messages: ids.length, diceRows: diceRows.length, outcomes: outcomeRows.length });
+    console.log(`chat-events ${worldId}: ${ids.length} messages, ${diceRows.length} dice rows, ${outcomeRows.length} outcomes, ${purchaseRows.length} purchases`);
+    res.json({ messages: ids.length, diceRows: diceRows.length, outcomes: outcomeRows.length, purchases: purchaseRows.length });
   } catch (err) {
     console.error("DB error:", err.message);
     res.status(500).json({ error: err.message });
@@ -438,11 +480,12 @@ app.get("/api/summary", authMiddleware, async (req, res) => {
 
     // Quick Actions (Lay on Hands, Healer, Add Healing/Damage/Kill) never go
     // through midi-qol, so add them from the chat log for the same range.
-    const [heal, dmg, kill, taken, crit, fumble, maxHit, atk, save] = await Promise.all([
+    const [heal, dmg, kill, taken, crit, fumble, maxHit, atk, save, saveFix] = await Promise.all([
       manualTotals("heal", session, req), manualTotals("damage", session, req), manualTotals("kill", session, req),
       manualTotals("damage_taken", session, req), manualTotals("crit", session, req),
       manualTotals("fumble", session, req), manualTotals("max_hit", session, req),
       manualCounts("attack", session, req), manualCounts("save", session, req),
+      manualTotals("save_fix", session, req),
     ]);
     const by = (list) => new Map(list.map(r => [r.actor_name, r]));
     const H = by(heal), D = by(dmg), K = by(kill), T = by(taken), C = by(crit), F = by(fumble), M = by(maxHit);
@@ -465,6 +508,12 @@ app.get("/api/summary", authMiddleware, async (req, res) => {
         r.total_saves = num(r.total_saves) + sv.n;
         if (sv.success) r.total_save_success = num(r.total_save_success) + sv.n;
         else r.total_save_fail = num(r.total_save_fail) + sv.n;
+      }
+      // Corrected saves: failed → passed (the save count stays the same)
+      for (const fx of saveFix) if (fx.actor_name === r.actor_name) {
+        const moved = Math.min(fx.amount, num(r.total_save_fail));
+        r.total_save_fail = num(r.total_save_fail) - moved;
+        r.total_save_success = num(r.total_save_success) + moved;
       }
     }
     rows.sort((x, y) => num(y.total_damage) - num(x.total_damage));
@@ -594,7 +643,60 @@ app.get("/api/outcomes", authMiddleware, async (req, res) => {
       .groupBy("actor_name", "outcome_type").orderBy("actor_name").orderBy("outcome_type");
     q = applyRange(q, await sessionRange(session));
     q = applyExcludes(q, req.query.exclude, excludeWorlds);
-    res.json(await q);
+    const rows = (await q).map(r => ({ ...r, success_count: Number(r.success_count) || 0, failure_count: Number(r.failure_count) || 0 }));
+    // "Add Other" corrections: Foundry recorded a miss / failed save that was really a hit / pass
+    for (const [fixType, type] of [["attack_fix", "attack"], ["save_fix", "save"]]) {
+      for (const f of await manualTotals(fixType, session, req)) {
+        const row = rows.find(r => r.actor_name === f.actor_name && r.outcome_type === type);
+        if (!row) continue;
+        const moved = Math.min(f.amount, row.failure_count);   // only what was actually recorded
+        row.failure_count -= moved;
+        row.success_count += moved;
+      }
+    }
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Shop spending for the dashboard. Amounts are in copper (100 cp = 1 gp).
+app.get("/api/shop-stats", authMiddleware, async (req, res) => {
+  const session = req.query.session;
+  try {
+    const range = await sessionRange(session);
+    const base = () => applyExcludes(applyRange(db("chat_purchases"), range), req.query.exclude, req.query.excludeWorlds);
+    const n = (r, ...keys) => { for (const k of keys) r[k] = Number(r[k]) || 0; return r; };
+
+    const [byActor, byShop, topItems, popular, recent, favShop] = await Promise.all([
+      base().select("actor_name").sum("total_cp as spent_cp").sum("qty as items")
+        .countDistinct("message_id as transactions").max("unit_cp as max_unit_cp")
+        .groupBy("actor_name").orderBy("spent_cp", "desc"),
+      base().select("shop_name").sum("total_cp as spent_cp").sum("qty as items")
+        .countDistinct("message_id as transactions").countDistinct("actor_name as buyers")
+        .groupBy("shop_name").orderBy("transactions", "desc"),
+      base().select("actor_name", "item_name", "shop_name", "unit_cp", "list_cp", "qty", "occurred_at")
+        .orderBy("unit_cp", "desc").orderBy("occurred_at", "desc").limit(10),
+      base().select("item_name").sum("qty as qty").sum("total_cp as spent_cp").countDistinct("actor_name as buyers")
+        .groupBy("item_name").orderBy("qty", "desc").limit(10),
+      base().select("actor_name", "item_name", "shop_name", "unit_cp", "list_cp", "qty", "total_cp", "occurred_at")
+        .orderBy("occurred_at", "desc").orderBy("id", "desc").limit(25),
+      base().select("actor_name", "shop_name").countDistinct("message_id as transactions")
+        .groupBy("actor_name", "shop_name"),
+    ]);
+    // Each player's most used shop and most expensive item
+    for (const a of byActor) {
+      n(a, "spent_cp", "items", "transactions", "max_unit_cp");
+      const shops = favShop.filter(f => f.actor_name === a.actor_name).map(f => n(f, "transactions"))
+        .sort((x, y) => y.transactions - x.transactions);
+      a.favourite_shop = shops[0]?.shop_name ?? null;
+      a.priciest_item = (await base().where("actor_name", a.actor_name).orderBy("unit_cp", "desc").first("item_name"))?.item_name ?? null;
+    }
+    res.json({
+      byActor,
+      byShop: byShop.map(r => n(r, "spent_cp", "items", "transactions", "buyers")),
+      topItems: topItems.map(r => n(r, "unit_cp", "list_cp", "qty")),
+      popular: popular.map(r => n(r, "qty", "spent_cp", "buyers")),
+      recent: recent.map(r => n(r, "unit_cp", "list_cp", "qty", "total_cp")),
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

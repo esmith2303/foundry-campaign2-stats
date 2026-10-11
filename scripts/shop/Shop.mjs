@@ -681,7 +681,7 @@ async function gmBuy({ shopId, actorId, lines } = {}, user) {
       </div>`,
     flags: { [MODULE_ID]: { shopPurchase: {
       shopId, shopTitle: shop.title, actorId: actor.id, totalCp, haggled,
-      lines: bought.map(b => ({ name: b.it.name, qty: b.q, unitCp: b.unitCp, listCp: b.listCp })),
+      lines: bought.map(b => ({ name: b.it.name, type: b.it.type ?? b.it.data?.type ?? null, qty: b.q, unitCp: b.unitCp, listCp: b.listCp })),
     } } },
   });
 
