@@ -1,0 +1,299 @@
+/* ── Casino ──────────────────────────────────────────────────────────────────
+   A fantasy tavern: dark oak panelling, a carved hanging sign, lamplight, green
+   baize tables with brass rims, parchment race cards. Everything is scoped to
+   .cz-dialog (the window) or .cz-receipt (the chat card). */
+
+@import url('https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=IM+Fell+English:ital@0;1&display=swap');
+
+.qa-popup-dialog.cz-dialog {
+  --oak: #2b1a0e; --oak2: #3a2413; --oak3: #4d3019; --brass: #c9a84c; --brass2: #e8c65a; --brass-dim: #8a6d2b;
+  --felt: #1d5a38; --felt2: #123d26; --parch: #eadcb6; --parch2: #d9c79a; --ink: #2a1d10; --ember: #ffb347;
+  max-width: none !important; min-width: 0 !important; box-sizing: border-box; max-height: 94vh !important;
+  padding: 0 !important; overflow: auto;
+  border: 3px solid #1a0f07 !important; border-radius: 10px !important;
+  background:
+    repeating-linear-gradient(90deg, rgba(0,0,0,.18) 0 2px, transparent 2px 46px, rgba(255,255,255,.025) 46px 48px, transparent 48px 94px),
+    repeating-linear-gradient(0deg, rgba(0,0,0,.08) 0 1px, transparent 1px 7px),
+    linear-gradient(180deg, #3a2413 0%, #2b1a0e 45%, #22140a 100%) !important;
+  box-shadow: 0 18px 70px rgba(0,0,0,.85), inset 0 0 0 1px var(--brass-dim), inset 0 0 60px rgba(0,0,0,.6), 0 0 40px rgba(255,170,60,.12) !important;
+  color: var(--parch); font-family: 'IM Fell English', 'Crimson Text', serif;
+}
+#cz-casino .qa-win-body { padding: 0 1rem 1rem; }
+#cz-casino * { box-sizing: border-box; }
+
+/* The hanging sign */
+.cz-sign { display: flex; align-items: center; justify-content: center; gap: 1.2rem; padding: .9rem 2.8rem .6rem; cursor: move; position: relative; }
+.cz-sign::before, .cz-sign::after { content: ""; position: absolute; top: 0; width: 2px; height: 16px; background: linear-gradient(#0d0804, #6b5a3a); }
+.cz-sign::before { left: calc(50% - 130px); } .cz-sign::after { right: calc(50% - 130px); }
+.cz-board {
+  text-align: center; padding: .45rem 2.4rem .5rem; border-radius: 6px; position: relative;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,.12) 0 2px, transparent 2px 9px), linear-gradient(180deg, #5c3a1c, #3d2511);
+  border: 2px solid #1a0f07; box-shadow: inset 0 0 0 2px var(--brass-dim), inset 0 2px 8px rgba(255,220,150,.15), 0 6px 14px rgba(0,0,0,.6);
+}
+.cz-name { font-family: 'IM Fell English SC', 'Cinzel', serif; font-size: 1.85rem; line-height: 1; letter-spacing: .06em; color: var(--brass2);
+  text-shadow: 0 1px 0 #1a0f07, 0 -1px 0 rgba(255,240,200,.25), 0 0 18px rgba(232,198,90,.35); }
+.cz-sub { font-family: 'IM Fell English', serif; font-style: italic; color: #d8c79a; font-size: .95rem; margin-top: .15rem; }
+.cz-lamp { width: 16px; height: 26px; border-radius: 50% 50% 45% 45%; background: radial-gradient(circle at 50% 60%, #fff3c4 0, #ffb347 35%, #c4621c 70%, transparent 72%);
+  filter: drop-shadow(0 0 10px rgba(255,170,60,.9)); animation: czFlicker 3.2s infinite ease-in-out; }
+.cz-lamp:last-child { animation-delay: -1.3s; }
+@keyframes czFlicker { 0%,100% { opacity: 1; transform: scale(1); } 40% { opacity: .82; transform: scale(.94, 1.04); } 55% { opacity: .95; } 70% { opacity: .78; transform: scale(1.03, .96); } }
+
+/* Buttons */
+#cz-casino .cz-btn {
+  font-family: 'IM Fell English SC', 'Cinzel', serif !important; font-size: .95rem !important; letter-spacing: .03em; text-transform: none !important;
+  padding: .35rem .8rem !important; border-radius: 4px !important; cursor: pointer; width: auto !important; line-height: 1.2 !important; height: auto !important;
+  color: var(--parch) !important; background: linear-gradient(180deg, #5a3a1c, #3d2511) !important; border: 1px solid var(--brass-dim) !important;
+  box-shadow: inset 0 1px 0 rgba(255,230,170,.18), 0 2px 4px rgba(0,0,0,.4) !important;
+}
+#cz-casino .cz-btn:hover:not(:disabled) { border-color: var(--brass2) !important; color: #fff6dc !important; box-shadow: inset 0 1px 0 rgba(255,230,170,.25), 0 0 10px rgba(232,198,90,.3) !important; }
+#cz-casino .cz-btn.primary { background: linear-gradient(180deg, #d9b45a, #a8832f) !important; color: #2a1a08 !important; border-color: #f3dc8e !important; }
+#cz-casino .cz-btn.primary:hover:not(:disabled) { color: #1a0f04 !important; background: linear-gradient(180deg, #ecc96b, #b88f35) !important; }
+#cz-casino .cz-btn.ghost { background: rgba(0,0,0,.25) !important; }
+#cz-casino .cz-btn.small { font-size: .8rem !important; padding: .15rem .5rem !important; }
+#cz-casino .cz-btn:disabled { opacity: .45; cursor: default; }
+.cz-dialog select { background: #1f130a !important; color: var(--parch) !important; border: 1px solid var(--brass-dim) !important; border-radius: 3px; font-family: inherit; height: auto !important; padding: .15rem .3rem; }
+
+.cz-gmbar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; padding: .45rem .6rem; margin-bottom: .8rem;
+  background: rgba(0,0,0,.35); border: 1px dashed var(--brass-dim); border-radius: 6px; }
+.cz-gm-tag { font-family: 'JetBrains Mono', monospace; font-size: .65rem; letter-spacing: .15em; color: #1a0f07; background: var(--brass); padding: .1rem .35rem; border-radius: 2px; }
+.cz-spacer { flex: 1; }
+.cz-dim { color: #a8987a; font-style: italic; }
+.cz-note { font-size: .82rem; color: #b8a888; font-style: italic; margin-top: .35rem; }
+.cz-empty { color: #8a7a5a; font-style: italic; font-size: .85rem; padding: .3rem 0; }
+.cz-section { font-family: 'IM Fell English SC', serif; font-size: 1.05rem; color: var(--brass2); letter-spacing: .05em; margin-bottom: .4rem; border-bottom: 1px solid var(--brass-dim); }
+.cz-row { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-top: .45rem; }
+.cz-portrait { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; object-position: top; border: 1px solid var(--brass); background: #1a0f07; flex: none; }
+.cz-purse { font-family: 'JetBrains Mono', monospace; font-size: .75rem; color: var(--brass2); margin-left: auto; white-space: nowrap; }
+
+/* Lobby */
+.cz-lobby { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+.cz-games { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .9rem; }
+.cz-game {
+  color: var(--ink); border-radius: 4px; padding: .9rem .9rem .8rem; position: relative; text-align: center;
+  background: radial-gradient(120% 90% at 50% 0%, #f4e8c8 0%, var(--parch) 45%, var(--parch2) 100%);
+  box-shadow: 0 8px 18px rgba(0,0,0,.55), inset 0 0 30px rgba(120,80,30,.25); border: 1px solid #8a6d2b;
+}
+.cz-game::before { content: ""; position: absolute; inset: 5px; border: 1px solid rgba(90,60,25,.45); border-radius: 2px; pointer-events: none; }
+.cz-game-art { height: 74px; display: flex; align-items: center; justify-content: center; }
+.cz-game-name { font-family: 'IM Fell English SC', serif; font-size: 1.45rem; color: #3a2210; }
+.cz-game-blurb { font-style: italic; font-size: .92rem; color: #5a4328; margin-bottom: .6rem; min-height: 2.4em; }
+.cz-marks { display: flex; flex-wrap: wrap; gap: .35rem; justify-content: center; min-height: 34px; }
+#cz-casino .cz-mark { display: inline-flex !important; align-items: center; gap: .35rem; padding: .15rem .55rem .15rem .15rem !important; border-radius: 20px !important; width: auto !important; height: auto !important;
+  font-family: 'IM Fell English', serif !important; font-size: .9rem !important; text-transform: none !important; letter-spacing: 0 !important; cursor: pointer; }
+#cz-casino .cz-mark.on { background: #3a2210 !important; color: #f4e8c8 !important; border: 1px solid #c9a84c !important; box-shadow: 0 2px 5px rgba(0,0,0,.35) !important; }
+#cz-casino .cz-mark.on:disabled { opacity: 1; cursor: default; }
+#cz-casino .cz-mark.on.mine::after { content: "✓"; color: var(--brass2); margin-left: .1rem; }
+#cz-casino .cz-mark.ghost { background: transparent !important; color: #6a4f2c !important; border: 1px dashed #8a6d2b !important; box-shadow: none !important; }
+#cz-casino .cz-mark.ghost:hover { background: rgba(138,109,43,.15) !important; color: #3a2210 !important; }
+#cz-casino .cz-mark.ghost .cz-portrait { filter: grayscale(.7) opacity(.75); }
+.cz-gm-pick { margin-top: .5rem; background: #f4e8c8 !important; color: #3a2210 !important; }
+.cz-party { background: rgba(0,0,0,.28); border: 1px solid #4d3019; border-radius: 6px; padding: .6rem .8rem; }
+.cz-party-row { display: flex; align-items: center; gap: .55rem; padding: .3rem 0; border-bottom: 1px dotted #4d3019; }
+.cz-party-row:last-of-type { border-bottom: none; }
+.cz-party-name { font-size: 1.02rem; color: #f4e8c8; min-width: 9rem; }
+.cz-party-status { color: var(--brass2); }
+
+/* Lobby art */
+.cz-art-cards { position: relative; width: 70px; height: 60px; }
+.cz-mini-card { position: absolute; width: 38px; height: 54px; background: #fbf7ec; border: 1px solid #8a7a5a; border-radius: 4px; color: #1a1a1a; font: 700 16px 'IM Fell English', serif;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 1px 2px 4px rgba(0,0,0,.35); left: 4px; top: 4px; transform: rotate(-10deg); }
+.cz-mini-card + .cz-mini-card { left: 28px; transform: rotate(9deg); }
+.cz-mini-card b { font-size: 18px; } .cz-mini-card.red { color: #a3241f; }
+.cz-art-wheel { width: 62px; height: 62px; border-radius: 50%; border: 4px solid #5a3818;
+  background: conic-gradient(#a3241f 0 10deg, #141414 10deg 20deg, #a3241f 20deg 30deg, #141414 30deg 40deg, #a3241f 40deg 50deg, #141414 50deg 60deg, #a3241f 60deg 70deg, #141414 70deg 80deg, #a3241f 80deg 90deg, #141414 90deg 100deg, #1e7a46 100deg 110deg, #a3241f 110deg 120deg, #141414 120deg 130deg, #a3241f 130deg 140deg, #141414 140deg 150deg, #a3241f 150deg 160deg, #141414 160deg 170deg, #a3241f 170deg 180deg, #141414 180deg 190deg, #a3241f 190deg 200deg, #141414 200deg 210deg, #a3241f 210deg 220deg, #141414 220deg 230deg, #a3241f 230deg 240deg, #141414 240deg 250deg, #a3241f 250deg 260deg, #141414 260deg 270deg, #a3241f 270deg 280deg, #141414 280deg 290deg, #a3241f 290deg 300deg, #141414 300deg 310deg, #a3241f 310deg 320deg, #141414 320deg 330deg, #a3241f 330deg 340deg, #141414 340deg 350deg, #a3241f 350deg 360deg);
+  box-shadow: inset 0 0 0 12px #6b4420, inset 0 0 0 14px #c9a84c, 0 3px 6px rgba(0,0,0,.4); animation: czSpinSlow 14s linear infinite; }
+@keyframes czSpinSlow { to { transform: rotate(360deg); } }
+.cz-art-lizard { font-size: 52px; transform: scaleX(-1); filter: drop-shadow(1px 3px 2px rgba(0,0,0,.35)); animation: czScurry 2.6s ease-in-out infinite; }
+@keyframes czScurry { 0%,100% { transform: scaleX(-1) translateX(0) rotate(0); } 25% { transform: scaleX(-1) translateX(-6px) rotate(-4deg); } 50% { transform: scaleX(-1) translateX(-2px) rotate(2deg); } 75% { transform: scaleX(-1) translateX(-8px) rotate(-2deg); } }
+
+/* Table */
+.cz-table-head { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; margin-bottom: .55rem; }
+.cz-phase { font-size: 1.15rem; color: #fff1cc; font-style: italic; }
+.cz-watch { font-family: 'JetBrains Mono', monospace; font-size: .72rem; color: #b8a888; border: 1px solid #4d3019; padding: .05rem .4rem; border-radius: 10px; }
+.cz-next { margin-left: auto; color: #b8a888; font-style: italic; font-size: .9rem; }
+.cz-felt {
+  border-radius: 18px; padding: 1rem; position: relative;
+  background: radial-gradient(ellipse at 50% 30%, #2a7a4e 0%, var(--felt) 45%, var(--felt2) 100%);
+  border: 10px solid #4a2c14; box-shadow: inset 0 0 0 2px var(--brass), inset 0 0 40px rgba(0,0,0,.5), 0 6px 16px rgba(0,0,0,.6);
+}
+.cz-felt::after { content: ""; position: absolute; inset: 0; border-radius: 9px; pointer-events: none;
+  background: repeating-linear-gradient(45deg, rgba(255,255,255,.012) 0 2px, transparent 2px 4px); }
+.cz-seats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .7rem; margin-top: .9rem; }
+.cz-seats.row { margin-top: .7rem; }
+.cz-seat { background: rgba(10,25,16,.55); border: 1px solid rgba(201,168,76,.35); border-radius: 8px; padding: .55rem .6rem; transition: box-shadow .25s, border-color .25s; position: relative; z-index: 1; }
+.cz-seats.row .cz-seat { background: rgba(0,0,0,.3); border-color: #4d3019; }
+.cz-seat.turn { border-color: var(--brass2); box-shadow: 0 0 0 1px var(--brass2), 0 0 18px rgba(232,198,90,.45); }
+.cz-seat.out { opacity: .55; }
+.cz-seat-head { display: flex; align-items: center; gap: .45rem; margin-bottom: .35rem; }
+.cz-seat-name { color: #fff1cc; font-size: 1.02rem; }
+.cz-seat-bets { display: flex; flex-wrap: wrap; gap: .25rem; }
+.cz-betpill { font-size: .78rem; padding: .05rem .45rem; border-radius: 10px; background: rgba(0,0,0,.35); border: 1px solid #6b5a3a; color: #e9dcb8; }
+.cz-betpill.won { border-color: #9fd18a; color: #c8f0b0; box-shadow: 0 0 8px rgba(140,220,120,.35); }
+.cz-controls { margin-top: .5rem; padding-top: .45rem; border-top: 1px dashed rgba(201,168,76,.35); }
+.cz-bet-line { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; margin-top: .35rem; }
+.cz-as { font-size: .9rem; display: flex; gap: .4rem; align-items: center; margin-bottom: .35rem; }
+
+/* Chips */
+.cz-rack { display: flex; gap: .35rem; flex-wrap: wrap; }
+#cz-casino .cz-rack-chip { background: none !important; border: none !important; padding: 0 !important; width: auto !important; height: auto !important; box-shadow: none !important; cursor: pointer; border-radius: 50% !important; }
+#cz-casino .cz-rack-chip.on .cz-chip { transform: translateY(-3px); box-shadow: 0 0 0 2px var(--brass2), 0 4px 8px rgba(0,0,0,.6); }
+.cz-chip { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; font: 700 11px 'JetBrains Mono', monospace;
+  color: #fff; border: 3px dashed rgba(255,255,255,.75); box-shadow: 0 0 0 2px rgba(0,0,0,.35), 0 2px 4px rgba(0,0,0,.5); transition: transform .15s; text-shadow: 0 1px 1px rgba(0,0,0,.6); vertical-align: middle; }
+.cz-chip.c1 { background: radial-gradient(#f2f2ee 55%, #d8d8d0 56%); color: #333; border-color: #3a6ab0; text-shadow: none; }
+.cz-chip.c5 { background: radial-gradient(#b8312b 55%, #9a241f 56%); }
+.cz-chip.c10 { background: radial-gradient(#2f5fae 55%, #234a8a 56%); }
+.cz-chip.c25 { background: radial-gradient(#2e8a4e 55%, #22693b 56%); }
+.cz-chip.c100 { background: radial-gradient(#1b1b1b 55%, #000 56%); border-color: var(--brass2); color: var(--brass2); }
+.cz-stake { display: inline-flex; align-items: center; gap: .25rem; font-size: .8rem; color: #e9dcb8; }
+.cz-stake .cz-chip { width: 28px; height: 28px; font-size: 10px; }
+
+/* Cards */
+.cz-hand { display: flex; gap: 0; min-height: 70px; align-items: flex-end; }
+.cz-card { width: 50px; height: 70px; border-radius: 5px; background: linear-gradient(160deg, #fffdf6, #efe8d6); border: 1px solid #8a7a5a; color: #151515;
+  position: relative; box-shadow: 1px 2px 5px rgba(0,0,0,.45); flex: none; font-family: 'IM Fell English', serif; }
+.cz-card + .cz-card { margin-left: -16px; }
+.cz-card.red { color: #a3241f; }
+.cz-card-rank { position: absolute; left: 4px; top: 1px; font-size: 17px; font-weight: 700; line-height: 1; }
+.cz-card-suit { position: absolute; left: 5px; top: 18px; font-size: 13px; line-height: 1; }
+.cz-card-pip { position: absolute; right: 5px; bottom: 2px; font-size: 26px; line-height: 1; }
+.cz-card.back { background: repeating-linear-gradient(45deg, #7a1d18 0 4px, #5c1411 4px 8px); border: 2px solid #f3e7c7; }
+.cz-card.back::after { content: "❧"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--brass2); font-size: 24px; }
+.cz-card.slot { background: transparent; border: 1px dashed rgba(201,168,76,.4); box-shadow: none; }
+.cz-card.deal { animation: czDeal .38s cubic-bezier(.2,.9,.3,1.15) both; }
+.cz-card.flip { animation: czFlip .45s ease both; }
+@keyframes czDeal { from { opacity: 0; transform: translate(140px, -120px) rotate(25deg) scale(.8); } to { opacity: 1; transform: none; } }
+@keyframes czFlip { 0% { transform: rotateY(90deg); } 100% { transform: none; } }
+.cz-dealer { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "label shoe" "hand shoe" "rules rules"; justify-items: center; position: relative; z-index: 1; }
+.cz-dealer-label { grid-area: label; font-family: 'IM Fell English SC', serif; color: var(--brass2); font-size: 1.05rem; margin-bottom: .3rem; }
+.cz-dealer .cz-hand { grid-area: hand; }
+.cz-shoe { grid-area: shoe; align-self: start; font-family: 'JetBrains Mono', monospace; font-size: .72rem; color: #cfe3d3; background: rgba(0,0,0,.35); border-radius: 4px; padding: .2rem .45rem; }
+.cz-felt-rules { grid-area: rules; font-family: 'IM Fell English SC', serif; color: rgba(232,198,90,.55); font-size: .95rem; letter-spacing: .06em; margin-top: .55rem; text-align: center; }
+.cz-total { font-family: 'JetBrains Mono', monospace; font-size: .75rem; background: rgba(0,0,0,.45); color: #fff; padding: .05rem .4rem; border-radius: 10px; margin-left: .3rem; }
+.cz-bj-hand { padding: .3rem; border-radius: 6px; margin-top: .25rem; }
+.cz-bj-hand.active { background: rgba(232,198,90,.12); box-shadow: inset 0 0 0 1px rgba(232,198,90,.6); }
+.cz-hand-foot { display: flex; align-items: center; gap: .35rem; margin-top: .3rem; flex-wrap: wrap; }
+.cz-hand-foot .cz-total { margin-left: 0; }
+.cz-hand-result { font-family: 'IM Fell English SC', serif; font-size: .95rem; padding: 0 .45rem; border-radius: 3px; animation: czPop .4s cubic-bezier(.2,.9,.3,1.4) both; }
+.cz-hand-result.win, .cz-hand-result.blackjack { background: #e8c65a; color: #2a1a08; }
+.cz-hand-result.blackjack { box-shadow: 0 0 12px rgba(232,198,90,.8); }
+.cz-hand-result.push { background: #8a8a7a; color: #111; }
+.cz-hand-result.lose, .cz-hand-result.bust { background: #7a1d18; color: #f4e8c8; }
+.cz-ins { font-size: .82rem; color: #e9dcb8; margin-top: .25rem; }
+@keyframes czPop { from { opacity: 0; transform: scale(.5); } to { opacity: 1; transform: none; } }
+
+/* Roulette */
+.cz-roulette { display: grid; grid-template-columns: 290px 1fr; gap: 1rem; align-items: start; }
+.cz-wheel-col { display: flex; flex-direction: column; align-items: center; gap: .5rem; position: relative; z-index: 1; }
+.cz-stage { position: relative; }
+.cz-wheel { width: 270px; height: 270px; display: block; filter: drop-shadow(0 8px 10px rgba(0,0,0,.6)); }
+.cz-wheel-rot, .cz-ball-rot { transform-origin: 0 0; transform-box: view-box; }
+.cz-wheel-nums text { font: 700 9px 'JetBrains Mono', monospace; fill: #f4efe0; }
+.cz-wheel-result { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+.cz-history { display: flex; flex-wrap: wrap; gap: .2rem; align-items: center; justify-content: center; max-width: 280px; font-size: .8rem; }
+.cz-hist { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; border-radius: 50%; font: 700 11px 'JetBrains Mono', monospace; color: #fff; border: 1px solid rgba(255,255,255,.35); }
+.cz-hist.red { background: #a3241f; } .cz-hist.black { background: #141414; } .cz-hist.green { background: #1e7a46; }
+.cz-hist.big { min-width: 58px; height: 58px; font-size: 24px; border: 2px solid var(--brass2); box-shadow: 0 0 20px rgba(232,198,90,.7); animation: czPop .5s cubic-bezier(.2,.9,.3,1.4) both; }
+.cz-board-col { position: relative; z-index: 1; min-width: 0; }
+.cz-board-wrap { overflow-x: auto; }
+.cz-rboard { display: grid; grid-template-columns: 42px 1fr; grid-template-rows: auto auto auto; gap: 3px; min-width: 560px; }
+.cz-rboard > .zero { grid-row: 1; grid-column: 1; }
+.cz-rgrid { grid-row: 1; grid-column: 2; display: grid; grid-template-columns: repeat(12, 1fr) 46px; gap: 3px; }
+.cz-dozens { grid-row: 2; grid-column: 2; display: grid; grid-template-columns: repeat(3, 1fr) 46px; gap: 3px; }
+.cz-evens { grid-row: 3; grid-column: 2; display: grid; grid-template-columns: repeat(6, 1fr) 46px; gap: 3px; }
+#cz-casino .cz-cell {
+  position: relative; min-height: 40px; height: auto !important; width: auto !important; padding: 2px !important; border-radius: 3px !important; cursor: pointer;
+  display: flex !important; flex-direction: column; align-items: center; justify-content: center; text-transform: none !important; letter-spacing: 0 !important;
+  font: 700 .95rem 'IM Fell English', serif !important; color: #f4efe0 !important; background: transparent !important;
+  border: 1px solid rgba(232,198,90,.55) !important; box-shadow: none !important;
+}
+#cz-casino .cz-cell.num.red { background: rgba(163,36,31,.88) !important; }
+#cz-casino .cz-cell.num.black { background: rgba(20,20,20,.88) !important; }
+#cz-casino .cz-cell.num.green { background: rgba(30,122,70,.95) !important; }
+#cz-casino .cz-cell.zero { height: 100% !important; }
+#cz-casino .cz-cell:hover:not(:disabled) { box-shadow: inset 0 0 0 2px var(--brass2) !important; }
+#cz-casino .cz-cell:disabled { cursor: default; opacity: 1; }
+#cz-casino .cz-cell.hit { box-shadow: inset 0 0 0 3px var(--brass2), 0 0 14px rgba(232,198,90,.8) !important; animation: czPulse 1.2s ease-in-out 3; }
+@keyframes czPulse { 50% { filter: brightness(1.6); } }
+.cz-cell-label { pointer-events: none; }
+.cz-cell-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 1px; pointer-events: none; }
+.cz-diamond { display: inline-block; width: 16px; height: 16px; transform: rotate(45deg); border: 1px solid #f4efe0; }
+.cz-diamond.red { background: #a3241f; } .cz-diamond.black { background: #141414; }
+.cz-dot { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 3px; border-radius: 9px; font: 700 9px 'JetBrains Mono', monospace; color: #111; border: 1px solid rgba(0,0,0,.5); box-shadow: 0 1px 2px rgba(0,0,0,.5); }
+.cz-dot.key { min-width: 12px; height: 12px; padding: 0; }
+.cz-dot.p0 { background: #f0c75e; } .cz-dot.p1 { background: #8fd3ff; } .cz-dot.p2 { background: #f59ad0; } .cz-dot.p3 { background: #b6f28c; } .cz-dot.p4 { background: #ffb37a; } .cz-dot.p5 { background: #d0b8ff; }
+.cz-dot.draft { opacity: .75; border-style: dashed; }
+.cz-dot.won { box-shadow: 0 0 0 2px #fff, 0 0 10px rgba(255,255,255,.8); }
+
+/* Lizard races */
+.cz-lizards { display: grid; grid-template-columns: 1fr; gap: .9rem; background: radial-gradient(ellipse at 50% 30%, #4a6e3a 0%, #2f4d26 60%, #22381b 100%) !important; }
+.cz-track { position: relative; z-index: 1; border-radius: 8px; overflow: hidden; padding: 22px 12px 30px 34px;
+  background: repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 3px, transparent 3px 22px), linear-gradient(180deg, #a5804e, #8a6640);
+  border: 3px solid #4a2c14; box-shadow: inset 0 0 25px rgba(0,0,0,.45); }
+.cz-rail { position: absolute; left: 0; right: 0; top: 0; height: 14px; background: repeating-linear-gradient(90deg, #5a3818 0 10px, #3d2511 10px 12px); border-bottom: 2px solid #2a1a0e; }
+.cz-lane { position: relative; height: 50px; border-bottom: 2px dashed rgba(60,35,15,.35); }
+.cz-lane:last-of-type { border-bottom: none; }
+.cz-lane-no { position: absolute; left: -26px; top: 15px; width: 20px; height: 20px; border-radius: 3px; background: var(--liz); color: #fff; font: 700 12px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(0,0,0,.5); }
+.cz-liz { position: absolute; top: 2px; width: 90px; height: 46px; will-change: left; z-index: 1; }
+.cz-liz-svg { width: 90px; height: 40px; margin-top: 3px; overflow: visible; filter: drop-shadow(1px 3px 1.5px rgba(0,0,0,.45)); }
+.cz-liz-skin, .cz-liz-tail { fill: var(--liz); stroke: rgba(0,0,0,.55); stroke-width: 1; }
+.cz-liz-stripe { stroke: rgba(255,255,255,.28); stroke-width: 2.2; stroke-linecap: round; fill: none; }
+.cz-legs-a path, .cz-legs-b path { stroke: var(--liz); stroke-width: 3.2; stroke-linecap: round; fill: none; filter: brightness(.7); }
+.cz-liz-silk { fill: #f4efe0; stroke: rgba(0,0,0,.5); stroke-width: .8; }
+.cz-liz-no { font: 700 8.5px 'JetBrains Mono', monospace; fill: #2a1a08; }
+.cz-legs-a, .cz-legs-b { transform-box: fill-box; transform-origin: center; }
+.cz-liz.running .cz-legs-a { animation: czLegs .16s ease-in-out infinite alternate; }
+.cz-liz.running .cz-legs-b { animation: czLegs .16s ease-in-out infinite alternate-reverse; }
+.cz-liz.running .cz-liz-svg { animation: czWiggle .16s ease-in-out infinite alternate; }
+@keyframes czLegs { from { transform: scaleX(.55); } to { transform: scaleX(1.1); } }
+@keyframes czWiggle { from { transform: rotate(-3deg); } to { transform: rotate(3deg); } }
+.cz-lane-place { position: absolute; right: 118px; top: 15px; z-index: 2; font: 700 .75rem 'JetBrains Mono', monospace; padding: .1rem .4rem; border-radius: 3px; opacity: 0; }
+.cz-lane-place.shown { opacity: 1; animation: czPop .4s cubic-bezier(.2,.9,.3,1.4) both; background: #3a2210; color: #f4e8c8; }
+.cz-lane-place.p1 { background: #e8c65a; color: #2a1a08; box-shadow: 0 0 12px rgba(232,198,90,.8); }
+.cz-lane::after { content: ""; position: absolute; top: -2px; bottom: -2px; left: calc(100% - 26px); width: 12px; background: repeating-conic-gradient(#111 0 25%, #f4f1ea 0 50%) 0 0 / 12px 12px; opacity: .85; }
+.cz-call { position: absolute; left: 0; right: 0; bottom: 4px; text-align: center; font-family: 'IM Fell English SC', serif; font-size: 1.15rem; color: #fff6dc; text-shadow: 0 2px 4px rgba(0,0,0,.8); }
+.cz-racecard { position: relative; z-index: 1; color: var(--ink); border-radius: 4px; padding: .7rem .8rem;
+  background: radial-gradient(120% 90% at 50% 0%, #f4e8c8 0%, var(--parch) 50%, var(--parch2) 100%); box-shadow: 0 6px 14px rgba(0,0,0,.45); }
+.cz-racecard .cz-section { color: #3a2210; border-color: #8a6d2b; }
+.cz-racecard .cz-note { color: #6a5030; }
+.cz-runner { display: grid; grid-template-columns: 30px 1fr auto auto; gap: .6rem; align-items: center; padding: .4rem .2rem; border-bottom: 1px solid rgba(90,60,25,.35); }
+.cz-runner.winner { background: linear-gradient(90deg, rgba(232,198,90,.45), transparent); }
+.cz-saddle { width: 26px; height: 26px; border-radius: 4px; background: var(--liz); color: #fff; font: 700 13px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(0,0,0,.4); }
+.cz-runner-name { font-family: 'IM Fell English SC', serif; font-size: 1.12rem; color: #2a1708; }
+.cz-runner-blurb { font-style: italic; font-size: .85rem; color: #6a5030; }
+.cz-form { font-family: 'JetBrains Mono', monospace; font-size: .72rem; color: #6a5030; display: flex; gap: 2px; align-items: center; margin-top: .1rem; }
+.cz-form b { display: inline-block; width: 15px; text-align: center; border-radius: 2px; background: rgba(90,60,25,.15); }
+.cz-form b.f1 { background: #c9a84c; color: #2a1708; }
+.cz-backers { display: flex; flex-wrap: wrap; gap: .2rem; margin-top: .2rem; }
+.cz-racecard .cz-betpill { background: #3a2210; }
+.cz-odds { font-family: 'IM Fell English SC', serif; font-size: 1.35rem; color: #7a1d18; min-width: 3.2rem; text-align: center; }
+.cz-runner-bet { display: flex; align-items: center; gap: .25rem; }
+.cz-racecard .cz-stake { color: #3a2210; }
+.cz-place { font-family: 'JetBrains Mono', monospace; font-size: .7rem; padding: .05rem .35rem; border-radius: 3px; background: #3a2210; color: #f4e8c8; vertical-align: middle; }
+.cz-place.p1 { background: #c9a84c; color: #2a1708; }
+.cz-racecard .cz-controls { border-top: none; border-bottom: 1px dashed rgba(90,60,25,.4); margin: 0 0 .3rem; padding: 0 0 .5rem; }
+.cz-racecard .cz-as { color: #3a2210; }
+
+/* Results */
+.cz-results { display: grid; gap: .35rem; margin-top: .8rem; }
+.cz-result { display: flex; align-items: center; gap: .6rem; padding: .4rem .7rem; border-radius: 6px; background: rgba(0,0,0,.35); border: 1px solid #4d3019; animation: czPop .45s cubic-bezier(.2,.9,.3,1.3) both; }
+.cz-result-name { color: #fff1cc; font-size: 1.05rem; }
+.cz-result-detail { color: #b8a888; font-style: italic; font-size: .88rem; flex: 1; }
+.cz-result-net { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 1rem; }
+.cz-result.win { border-color: var(--brass); box-shadow: 0 0 14px rgba(232,198,90,.25); } .cz-result.win .cz-result-net { color: #e8c65a; }
+.cz-result.loss .cz-result-net { color: #e07a6a; } .cz-result.even .cz-result-net { color: #ccc; }
+
+/* "Back to the casino" button when the window has been closed */
+#cz-pill { position: fixed; right: 320px; bottom: 16px; z-index: 9999; padding: .5rem .9rem; border-radius: 20px; cursor: pointer; width: auto;
+  font-family: 'IM Fell English SC', 'Cinzel', serif; font-size: 1rem; color: #2a1a08; background: linear-gradient(180deg, #ecc96b, #b88f35);
+  border: 1px solid #f3dc8e; box-shadow: 0 4px 14px rgba(0,0,0,.6), 0 0 16px rgba(232,198,90,.35); }
+
+/* Chat receipt */
+.cz-receipt .cz-receipt-headline { font-family: 'IM Fell English SC', 'Cinzel', serif; font-size: 1.05rem; text-align: center; margin-bottom: .3rem; }
+.cz-receipt .qa-receipt-amt.success { color: #2e7d32; } .cz-receipt .qa-receipt-amt.failure { color: #a3241f; }
+
+@media (max-width: 760px) {
+  .cz-roulette { grid-template-columns: 1fr; }
+  .cz-name { font-size: 1.4rem; }
+  .cz-runner { grid-template-columns: 26px 1fr auto; }
+  .cz-runner-bet { grid-column: 2 / -1; }
+}

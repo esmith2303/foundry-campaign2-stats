@@ -159,6 +159,7 @@ function outcomeTypeFor(rollType) {
  *   max_hit (biggest single hit on one target) · kill · healing (HP restored)
  *   damage_taken (amount, detail = type) · save · check · death · heal (one per
  *   heal used / "+" heal with amount) · attack_fix / save_fix (corrections)
+ *   wager / gamble (casino stake and winnings in cp, detail = game)
  */
 export function extractMessage(message, ctx, itemFor = null) {
   const messageId = message.id ?? message._id;
@@ -375,6 +376,19 @@ export function extractMessage(message, ctx, itemFor = null) {
     }
   }
 
+  // ── Casino receipts: one "wager" (stake) and one "gamble" (winnings, can be
+  // negative) per character per round; detail = the game
+  const casino = flags[MODULE_ID]?.casinoResult;
+  if (casino && Array.isArray(casino.lines) && allowed(casino.lines[0]?.actorId)) {
+    casino.lines.forEach((l, i) => {
+      const stake = Math.round(Number(l?.stakeCp)), back = Math.round(Number(l?.returnCp));
+      if (!l?.actorId || !Number.isFinite(stake) || !Number.isFinite(back) || stake <= 0) return;
+      const extra = { detail: casino.game ?? null, item: casino.casino ?? null };
+      addOutcome(l.actorId, "wager", true, `c${i}`, null, stake, extra);
+      addOutcome(l.actorId, "gamble", back > stake, `c${i}`, null, back - stake, extra);
+    });
+  }
+
   // ── Shop receipts: purchases and sales (one row per item line, prices in copper)
   const purchases = [];
   for (const [kind, rec] of [["buy", flags[MODULE_ID]?.shopPurchase], ["sell", flags[MODULE_ID]?.shopSale]]) {
@@ -456,6 +470,7 @@ export function summarise(results) {
       if (o.type === "damage") a.damage += o.amount || 0;
       if (o.type === "kill") a.kills += 1;
       if (o.type === "damage_taken") a.taken += o.amount || 0;
+      if (o.type === "gamble") a.casinoNet = (a.casinoNet || 0) + (o.amount || 0);
       const c = (a.outcomes[o.type] ??= { success: 0, failure: 0 });
       c[o.success ? "success" : "failure"]++;
     }

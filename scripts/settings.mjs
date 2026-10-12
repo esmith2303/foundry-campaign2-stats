@@ -27,6 +27,28 @@ export function registerSettings(moduleId) {
   });
 
   // Shops built by the GM (Shop button). { [shopId]: { id, title, items: [...] } }
+  game.settings.register(moduleId, "casinoName", {
+    name: "Casino name",
+    hint: "Shown on the casino's sign and its chat receipts.",
+    scope: "world",
+    config: true,
+    type: String,
+    default: "The Lucky Lizard",
+  });
+
+  game.settings.register(moduleId, "casinoMaxBet", {
+    name: "Casino table limit (gp)",
+    hint: "The most a character can stake on one hand, spin or race. The minimum bet is 1 gp.",
+    scope: "world",
+    config: true,
+    type: Number,
+    default: 100,
+  });
+
+  // The lizards' recent form (world) and the GM's running casino night (this browser only)
+  game.settings.register(moduleId, "casinoLizards", { scope: "world", config: false, type: Object, default: {} });
+  game.settings.register(moduleId, "casinoSave", { scope: "client", config: false, type: Object, default: {} });
+
   game.settings.register(moduleId, "shops", {
     scope: "world",
     config: false,

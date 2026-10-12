@@ -677,6 +677,58 @@ app.get("/api/shop-stats", authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Casino winnings and losses. Amounts are in copper; "net" is the player's
+// side (positive = they won money off the house).
+app.get("/api/casino-stats", authMiddleware, async (req, res) => {
+  try {
+    const range = await sessionRange(req.query.session);
+    const rows = () => applyExcludes(applyRange(db("chat_outcomes"), range), req.query.exclude, req.query.excludeWorlds)
+      .whereIn("outcome_type", ["wager", "gamble"]);
+    const T = (cond, val) => db.raw(`SUM(CASE WHEN ${cond} THEN ${val} ELSE 0 END)`).toString();
+    const [byActorGame, recentRows] = await Promise.all([
+      rows().select("actor_name", "detail as game",
+          db.raw(`${T("outcome_type = 'wager'", "amount")} as wagered_cp`),
+          db.raw(`${T("outcome_type = 'gamble'", "amount")} as net_cp`),
+          db.raw(`${T("outcome_type = 'gamble'", "1")} as rounds`),
+          db.raw(`${T("outcome_type = 'gamble' AND success", "1")} as wins`),
+          db.raw("MAX(CASE WHEN outcome_type = 'gamble' THEN amount END) as best_cp"),
+          db.raw("MIN(CASE WHEN outcome_type = 'gamble' THEN amount END) as worst_cp"))
+        .groupBy("actor_name", "detail"),
+      rows().select("message_id", "actor_name", "detail as game", "item_name as casino", "outcome_type", "amount", "occurred_at")
+        .orderBy("occurred_at", "desc").limit(60),
+    ]);
+    const num = (v) => Number(v) || 0;
+    const actors = new Map(), games = new Map();
+    for (const r of byActorGame) {
+      for (const k of ["wagered_cp", "net_cp", "rounds", "wins", "best_cp", "worst_cp"]) r[k] = num(r[k]);
+      const a = actors.get(r.actor_name) ?? { actor_name: r.actor_name, wagered_cp: 0, net_cp: 0, rounds: 0, wins: 0, best_cp: 0, worst_cp: 0, games: {} };
+      a.wagered_cp += r.wagered_cp; a.net_cp += r.net_cp; a.rounds += r.rounds; a.wins += r.wins;
+      a.best_cp = Math.max(a.best_cp, r.best_cp); a.worst_cp = Math.min(a.worst_cp, r.worst_cp);
+      a.games[r.game ?? "other"] = { rounds: r.rounds, net_cp: r.net_cp, wagered_cp: r.wagered_cp };
+      actors.set(r.actor_name, a);
+      const g = games.get(r.game) ?? { game: r.game, wagered_cp: 0, net_cp: 0, rounds: 0, players: 0 };
+      g.wagered_cp += r.wagered_cp; g.net_cp += r.net_cp; g.rounds += r.rounds; g.players += 1;
+      games.set(r.game, g);
+    }
+    for (const a of actors.values()) {
+      a.favourite_game = Object.entries(a.games).sort((x, y) => y[1].rounds - x[1].rounds)[0]?.[0] ?? null;
+    }
+    // One line per character per round: stake and winnings side by side
+    const recent = new Map();
+    for (const r of recentRows) {
+      const key = `${r.message_id}|${r.actor_name}`;
+      const line = recent.get(key) ?? { actor_name: r.actor_name, game: r.game, casino: r.casino, occurred_at: r.occurred_at, wagered_cp: 0, net_cp: 0 };
+      if (r.outcome_type === "wager") line.wagered_cp = num(r.amount); else line.net_cp = num(r.amount);
+      recent.set(key, line);
+    }
+    res.json({
+      byActor: [...actors.values()].sort((x, y) => y.net_cp - x.net_cp),
+      byGame: [...games.values()].sort((x, y) => y.rounds - x.rounds),
+      recent: [...recent.values()].slice(0, 20),
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get("/api/dice-types", authMiddleware, async (req, res) => {
   const session = req.query.session;
   const excludeWorlds = req.query.excludeWorlds;

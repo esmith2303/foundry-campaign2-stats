@@ -160,6 +160,56 @@ PCs), so test characters show up when looking at a test world; they're tagged
 TEST in Manage Names. Install it the same way:
 `<script src="test-worlds.js"></script>`.
 
+## Casino (GM "dice" button)
+
+A night at the casino: **Blackjack**, **Roulette** and the **Lizard Races**,
+in a tavern-styled window everyone sees.
+
+1. **Lobby.** The GM opens the casino and the window pops up for everyone.
+   Each player clicks "＋ name" on the game their character wants, which puts
+   their mark there (click it again to take it off), or chooses *Sit out*. The
+   GM can seat anyone with the "Seat someone here…" list.
+2. **The night.** The GM presses *Open the tables*. The chosen games are played
+   one at a time, in lobby order (Blackjack → Roulette → Lizard Races), with
+   everyone watching. Characters who chose the same game share the table, each
+   with their own bets. A player who closes the window gets a "Back to the
+   casino" button, and the window comes back by itself when the next game
+   starts.
+3. **After each round** the GM picks *Another round*, *Next: …* or *Lobby*.
+   *Close the casino* ends the night. Ending or leaving a round early hands
+   every stake back (with a chat note).
+
+The GM also gets a hurry-along button: *Deal / Spin / Start the race now*
+(anyone who hasn't bet sits out), *No more insurance*, and *Stand for …* (for
+a player who's gone quiet).
+
+| Game | Rules |
+|---|---|
+| Blackjack | 6-deck shoe (reshuffled at the cut card, carried between rounds). Dealer stands on all 17s and peeks for blackjack. Blackjack pays 3:2. Double on any first two cards (also after a split). Split any two cards of the same value, up to 4 hands; split aces get one card each, and 21 on a split hand isn't a blackjack. Insurance (half the bet) when the dealer shows an ace pays 2:1. Click chips to build a bet. |
+| Roulette | European single zero. Pick a chip, click the board to place it, right-click to take it back. Numbers pay 35:1, dozens and columns 2:1, red/black, odd/even and 1–18/19–36 evens. Zero loses every outside bet. The wheel spins for about 7 seconds and stops on the same number on every screen. |
+| Lizard Races | Four lizards are drawn from a stable of ten, each with hidden speed, consistency and finishing kick. The odds come from simulating that exact field 3,000 times, less the house's cut (about 12%), so favourites really do win more often. Each lizard's last six finishes show as its form. Back one or more lizards to win. The race lasts about 6–7 seconds, is the same on every screen, and calls the lead changes. |
+
+**Money.** Bets come straight off the character sheet when they're placed, and
+winnings are paid back when the round settles. All of it happens on the GM's
+client, one action at a time. The table limit (default 100 gp a hand, spin or
+race) and the casino's name are module settings; the minimum bet is 1 gp.
+Players can only bet for characters they own, and only on their turn.
+
+**Fairness.** The dealer is the GM's client. The shoe and the dealer's hole
+card are never sent to players until they're turned over, and every random
+draw uses the browser's cryptographic random numbers. If the GM reloads
+mid-night, the night carries on from where it was, for the same GM in the same
+browser.
+
+**Stats.** Every round posts a receipt to chat (each character's stake, what
+came back and what happened). The upload reads it like everything else, and
+the dashboard's **Casino** section shows rounds played, gold wagered, how far
+the house is up or down, luckiest and unluckiest, biggest win, won/lost per
+player, rounds by game, each player's record and favourite game, and recent
+rounds. API: `GET /api/casino-stats?session=…`. Install
+`dashboard/casino.js` like shops.js: `<script src="casino.js"></script>`, after
+shops.js.
+
 ## Combat recap
 
 When the GM ends a combat (that started and had player characters in it),

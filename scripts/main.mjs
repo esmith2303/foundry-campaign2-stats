@@ -6,6 +6,7 @@ import { registerQuickActions, quickActionsTool, openQuickActions, QUICK_ACTIONS
 import { registerShop, shopTool, openShopManager, SHOP_TOOL } from "./shop/Shop.mjs";
 import { addWindowControls } from "./windowControls.mjs";
 import { registerCombatRecap } from "./recap/CombatRecap.mjs";
+import { registerCasino, casinoTool, openCasino, CASINO_TOOL } from "./casino/Casino.mjs";
 import { partyCharacters } from "./abilities/shared.mjs";
 
 const MODULE_ID = "dnd-group-campaign-2-stats";
@@ -27,7 +28,7 @@ Hooks.once("init", () => {
 // them. Adding ours the same way keeps every popup styled as intended.
 function loadStyles() {
   const version = game.modules.get(MODULE_ID)?.version ?? "";
-  for (const file of ["styles/quick-actions.css", "styles/shop.css", "styles/recap.css"]) {
+  for (const file of ["styles/quick-actions.css", "styles/shop.css", "styles/recap.css", "styles/casino.css"]) {
     if (document.querySelector(`link[data-qa-style="${file}"]`)) continue;
     const link = document.createElement("link");
     link.rel = "stylesheet";
@@ -49,6 +50,7 @@ Hooks.once("ready", async () => {
   registerQuickActions();
   registerShop();
   registerCombatRecap();
+  registerCasino();
 
   // Clear the old live-tracking store; nothing reads it any more
   if (game.user.isGM) {
@@ -72,6 +74,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
   if (!game.user.isGM) return;
   // Shops — GM only (players just get the Visit popup when the GM opens one)
   tokenControls.tools[SHOP_TOOL] = shopTool();
+  tokenControls.tools[CASINO_TOOL] = casinoTool();
   tokenControls.tools["midi-qol-upload"] = {
     name: "midi-qol-upload",
     title: "Upload Stats",
@@ -107,6 +110,13 @@ Hooks.on("renderSceneControls", () => {
     const newShopBtn = shopBtn.cloneNode(true);
     shopBtn.parentNode.replaceChild(newShopBtn, shopBtn);
     newShopBtn.addEventListener("click", (e) => { e.stopPropagation(); openShopManager(); });
+  }
+
+  const casinoBtn = document.querySelector(`[data-tool="${CASINO_TOOL}"]`);
+  if (casinoBtn) {
+    const newCasinoBtn = casinoBtn.cloneNode(true);
+    casinoBtn.parentNode.replaceChild(newCasinoBtn, casinoBtn);
+    newCasinoBtn.addEventListener("click", (e) => { e.stopPropagation(); openCasino(); });
   }
 
   const btn = document.querySelector('[data-tool="midi-qol-upload"]');
