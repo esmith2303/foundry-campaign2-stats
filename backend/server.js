@@ -194,6 +194,23 @@ async function migrateUp() {
       }
     }
   }
+  // One row per "Upload Stats" press: marks where each session ends. (Sessions
+  // used to be read from actor_stats, which only got rows when midi-qol had
+  // stats; its counters are no longer used.)
+  if (!(await db.schema.hasTable("stat_uploads"))) {
+    await db.schema.createTable("stat_uploads", (t) => {
+      t.increments("id").primary();
+      t.timestamp("uploaded_at").notNullable();
+      t.string("world_id", 100).notNullable();
+      t.string("world_name", 255).nullable();
+      t.unique(["world_id", "uploaded_at"]);
+      t.index(["uploaded_at"]);
+    });
+    const old = await db("actor_stats").select("uploaded_at", "world_id").max("world_name as world_name")
+      .groupBy("uploaded_at", "world_id");
+    for (const part of chunks(old, 500)) await db("stat_uploads").insert(part);
+    console.log(`Created table stat_uploads (${old.length} earlier uploads copied from actor_stats)`);
+  }
 }
 
 function mapCounters(c, p) {
@@ -240,23 +257,13 @@ function applyExcludes(q, exclude, excludeWorlds) {
   return q;
 }
 
-async function getLatestTimestamp(excludeWorlds) {
-  let q = db("actor_stats").max("uploaded_at as ts");
-  if (excludeWorlds) {
-    const wids = excludeWorlds.split(",").map(n => n.trim()).filter(Boolean);
-    if (wids.length) q = q.whereNotIn("world_id", wids);
-  }
-  const row = await q.first();
-  return row?.ts ?? null;
-}
-
-// A session (an actor_stats upload timestamp) covers every chat event after the
-// previous upload in the same world, up to and including this one.
+// A session (an upload timestamp) covers every chat event after the previous
+// upload in the same world, up to and including this one.
 async function sessionRange(session) {
   if (!session || session === "all") return null;
   const to = new Date(session);
-  const cur = await db("actor_stats").where("uploaded_at", to).first("world_id");
-  let q = db("actor_stats").max("uploaded_at as ts").where("uploaded_at", "<", to);
+  const cur = await db("stat_uploads").where("uploaded_at", to).first("world_id");
+  let q = db("stat_uploads").max("uploaded_at as ts").where("uploaded_at", "<", to);
   if (cur?.world_id) q = q.where("world_id", cur.world_id);
   const prev = (await q.first())?.ts ?? null;
   return { from: prev ? new Date(prev) : null, to };
@@ -274,9 +281,8 @@ function chunks(arr, n) {
   return out;
 }
 
-// Totals from Quick Actions ("+" button) for a session range: manual kills,
-// manual damage and healing never go through midi-qol, so they're added on top
-// of its numbers. type: "heal" | "damage" | "kill"; groupBy: extra columns.
+// Totals of one chat_outcomes type for a session range (sum / max of amount,
+// row count). groupBy: extra columns, e.g. detail (damage type) or item_name.
 async function manualTotals(type, session, req, groupBy = []) {
   let q = db("chat_outcomes").select("actor_name", ...groupBy)
     .sum("amount as amount").max("amount as max_amount").count("* as n")
@@ -286,15 +292,39 @@ async function manualTotals(type, session, req, groupBy = []) {
   return (await q).map(r => ({ ...r, amount: Number(r.amount) || 0, max_amount: Number(r.max_amount) || 0, n: Number(r.n) || 0 }));
 }
 
-// Attacks / saves added with "Add Other" are real outcome rows (so they count
-// in hit % and save %) tagged detail = "manual"; midi-qol never saw them, so
-// they're also added to its attack / save totals. → [{actor_name, success, n}]
-async function manualCounts(type, session, req) {
-  let q = db("chat_outcomes").select("actor_name", "success").count("* as n")
-    .where("outcome_type", type).where("detail", "manual").groupBy("actor_name", "success");
+// Per-character totals for the stats table, all from the chat log
+// (see scripts/extract.mjs for what each outcome type means).
+async function characterTotals(session, req) {
+  const T = (cond, val = "1") => db.raw(`SUM(CASE WHEN ${cond} THEN ${val} ELSE 0 END)`);
+  const is = (t) => `outcome_type = '${t}'`;
+  let q = db("chat_outcomes").select("actor_name",
+      // "manual-hit" rows are results added to an attack counted elsewhere: hit % only
+      db.raw(`${T(`(${is("attack")} AND COALESCE(detail, '') <> 'manual-hit') OR ${is("attack_nt")}`).toString()} as total_attacks`),
+      db.raw(`${T(is("crit"), "COALESCE(amount, 0)").toString()} as total_crits`),
+      db.raw(`${T(is("fumble"), "COALESCE(amount, 0)").toString()} as total_fumbles`),
+      db.raw(`${T(is("damage"), "COALESCE(amount, 0)").toString()} as total_damage`),
+      db.raw(`MAX(CASE WHEN ${is("damage")} OR ${is("max_hit")} THEN amount ELSE 0 END) as max_single_hit`),
+      db.raw(`${T(is("kill")).toString()} as total_kills`),
+      db.raw(`${T(`${is("heal")} OR ${is("healing")}`, "COALESCE(amount, 0)").toString()} as total_healing`),
+      db.raw(`${T(is("damage_taken"), "COALESCE(amount, 0)").toString()} as total_damage_taken`),
+      db.raw(`${T(is("save")).toString()} as total_saves`),
+      db.raw(`${T(`${is("save")} AND success`).toString()} as total_save_success`),
+      db.raw(`${T(`${is("save")} AND NOT success`).toString()} as total_save_fail`),
+      db.raw(`${T(is("save_fix"), "COALESCE(amount, 0)").toString()} as save_fixes`),
+      db.raw(`${T(is("death")).toString()} as total_death_saves`))
+    .groupBy("actor_name");
   q = applyRange(q, await sessionRange(session));
   q = applyExcludes(q, req.query.exclude, req.query.excludeWorlds);
-  return (await q).map(r => ({ ...r, success: r.success === true || r.success === 1 || r.success === "1" || r.success === "t", n: Number(r.n) || 0 }));
+  const num = (v) => Number(v) || 0;
+  return (await q).map(r => {
+    for (const k of Object.keys(r)) if (k !== "actor_name") r[k] = num(r[k]);
+    // "Add Other" corrections: failed saves that really passed (count unchanged)
+    const moved = Math.min(r.save_fixes, r.total_save_fail);
+    r.total_save_fail -= moved;
+    r.total_save_success += moved;
+    delete r.save_fixes;
+    return r;
+  });
 }
 
 app.get("/api/health", (_req, res) => res.json({ status: "ok", db: DB_CLIENT }));
@@ -370,10 +400,9 @@ app.post("/api/chat-events", authMiddleware, async (req, res) => {
 });
 
 app.post("/api/roll-stats", authMiddleware, async (req, res) => {
-  const { timestamp, worldId, worldName, stats, diceRolls } = req.body;
-  if (!stats || typeof stats !== "object") {
-    return res.status(400).json({ error: "Body must have a 'stats' object." });
-  }
+  const { timestamp, worldId, worldName, diceRolls } = req.body ?? {};
+  const stats = req.body?.stats && typeof req.body.stats === "object" ? req.body.stats : {};
+  if (!worldId) return res.status(400).json({ error: "Body must have a worldId." });
 
   const uploadedAt = timestamp ? new Date(timestamp) : new Date();
   const actorRows = [], itemRows = [], damageRows = [], diceRows = [], outcomeRows = [];
@@ -457,6 +486,10 @@ app.post("/api/roll-stats", authMiddleware, async (req, res) => {
 
   try {
     await db.transaction(async (trx) => {
+      // The session marker. (Older module versions also send midi-qol's
+      // counters below; they're stored but no longer used.)
+      const marker = await trx("stat_uploads").where({ world_id: worldId, uploaded_at: uploadedAt }).first("id");
+      if (!marker) await trx("stat_uploads").insert({ uploaded_at: uploadedAt, world_id: worldId, world_name: worldName ?? null });
       if (actorRows.length) await trx("actor_stats").insert(actorRows);
       if (itemRows.length) await trx("item_stats").insert(itemRows);
       if (damageRows.length) await trx("damage_by_type").insert(damageRows);
@@ -472,168 +505,78 @@ app.post("/api/roll-stats", authMiddleware, async (req, res) => {
 });
 
 app.get("/api/summary", authMiddleware, async (req, res) => {
-  const session = req.query.session;
-  const excludeWorlds = req.query.excludeWorlds;
   try {
-    let ts, p;
-    if (!session || session === "all") { ts = await getLatestTimestamp(excludeWorlds); p = "l_"; }
-    else { ts = new Date(session); p = "s_"; }
-    if (!ts) return res.json([]);
-
-    let q = db("actor_stats").select("actor_name",
-      db.raw(`SUM(${p}num_attacks) as total_attacks`), db.raw(`SUM(${p}damage_total) as total_damage`),
-      db.raw(`SUM(${p}kills) as total_kills`), db.raw(`SUM(${p}num_attack_critical) as total_crits`),
-      db.raw(`SUM(${p}num_attack_fumble) as total_fumbles`), db.raw(`SUM(${p}healing_done) as total_healing`),
-      db.raw(`SUM(${p}damage_taken) as total_damage_taken`), db.raw(`SUM(${p}num_saves) as total_saves`),
-      db.raw(`SUM(${p}num_save_success) as total_save_success`), db.raw(`SUM(${p}num_save_fail) as total_save_fail`),
-      db.raw(`SUM(${p}num_death_saves) as total_death_saves`), db.raw(`MAX(${p}max_damage) as max_single_hit`),
-      db.raw("COUNT(*) as sessions_played")
-    ).where("uploaded_at", ts).groupBy("actor_name").orderBy("total_damage", "desc");
-    q = applyExcludes(q, req.query.exclude, excludeWorlds);
-    const rows = await q;
-
-    // Quick Actions (Lay on Hands, Healer, Add Healing/Damage/Kill) never go
-    // through midi-qol, so add them from the chat log for the same range.
-    const [heal, dmg, kill, taken, crit, fumble, maxHit, atk, save, saveFix] = await Promise.all([
-      manualTotals("heal", session, req), manualTotals("damage", session, req), manualTotals("kill", session, req),
-      manualTotals("damage_taken", session, req), manualTotals("crit", session, req),
-      manualTotals("fumble", session, req), manualTotals("max_hit", session, req),
-      manualCounts("attack", session, req), manualCounts("save", session, req),
-      manualTotals("save_fix", session, req),
-    ]);
-    const by = (list) => new Map(list.map(r => [r.actor_name, r]));
-    const H = by(heal), D = by(dmg), K = by(kill), T = by(taken), C = by(crit), F = by(fumble), M = by(maxHit);
-    const num = (v) => Number(v) || 0;
-    for (const r of rows) {
-      const h = H.get(r.actor_name), d = D.get(r.actor_name), k = K.get(r.actor_name), t = T.get(r.actor_name);
-      const c = C.get(r.actor_name), f = F.get(r.actor_name), m = M.get(r.actor_name);
-      if (h) r.total_healing = num(r.total_healing) + h.amount;
-      if (d) {
-        r.total_damage = num(r.total_damage) + d.amount;
-        r.max_single_hit = Math.max(num(r.max_single_hit), d.max_amount);
-      }
-      if (k) r.total_kills = num(r.total_kills) + k.n;
-      if (t) r.total_damage_taken = num(r.total_damage_taken) + t.amount;
-      if (c) r.total_crits = num(r.total_crits) + c.amount;
-      if (f) r.total_fumbles = num(r.total_fumbles) + f.amount;
-      if (m) r.max_single_hit = Math.max(num(r.max_single_hit), m.max_amount);
-      for (const a of atk) if (a.actor_name === r.actor_name) r.total_attacks = num(r.total_attacks) + a.n;
-      for (const sv of save) if (sv.actor_name === r.actor_name) {
-        r.total_saves = num(r.total_saves) + sv.n;
-        if (sv.success) r.total_save_success = num(r.total_save_success) + sv.n;
-        else r.total_save_fail = num(r.total_save_fail) + sv.n;
-      }
-      // Corrected saves: failed → passed (the save count stays the same)
-      for (const fx of saveFix) if (fx.actor_name === r.actor_name) {
-        const moved = Math.min(fx.amount, num(r.total_save_fail));
-        r.total_save_fail = num(r.total_save_fail) - moved;
-        r.total_save_success = num(r.total_save_success) + moved;
-      }
-    }
-    rows.sort((x, y) => num(y.total_damage) - num(x.total_damage));
+    const rows = await characterTotals(req.query.session, req);
+    rows.sort((x, y) => y.total_damage - x.total_damage);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get("/api/sessions", authMiddleware, async (req, res) => {
-  const excludeWorlds = req.query.excludeWorlds;
   try {
-    let q = db("actor_stats").select("uploaded_at", "world_name", "world_id")
-      .groupBy("uploaded_at", "world_name", "world_id").orderBy("uploaded_at", "desc");
-    q = applyExcludes(q, null, excludeWorlds);
+    let q = db("stat_uploads").select("uploaded_at", "world_name", "world_id").orderBy("uploaded_at", "desc");
+    q = applyExcludes(q, null, req.query.excludeWorlds);
     res.json(await q);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get("/api/worlds", authMiddleware, async (req, res) => {
   try {
-    const rows = await db("actor_stats").select("world_id", "world_name")
+    const rows = await db("stat_uploads").select("world_id").max("world_name as world_name")
       .count("* as uploads").max("uploaded_at as last_upload")
-      .groupBy("world_id", "world_name").orderBy("last_upload", "desc");
+      .groupBy("world_id").orderBy("last_upload", "desc");
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get("/api/names", authMiddleware, async (req, res) => {
-  const excludeWorlds = req.query.excludeWorlds;
   try {
-    // ?testWorlds=1 → the player characters seen in worlds whose ID has "test"
-    // in it (from the chat-log tables, which only ever hold PCs)
-    if (req.query.testWorlds) {
-      const lists = await Promise.all(["chat_dice", "chat_outcomes", "chat_purchases"]
-        .map(t => db(t).distinct("actor_name").whereRaw("LOWER(world_id) LIKE ?", ["%test%"])));
-      return res.json([...new Set(lists.flat().map(r => r.actor_name).filter(Boolean))].sort());
-    }
-    let q = db("actor_stats").distinct("actor_name").orderBy("actor_name");
-    q = applyExcludes(q, null, excludeWorlds);
-    const rows = await q;
-    res.json(rows.map(r => r.actor_name).filter(Boolean));
+    // Characters seen in the chat-log tables (player characters only).
+    // ?testWorlds=1 → only those from worlds whose ID has "test" in it
+    const lists = await Promise.all(["chat_dice", "chat_outcomes", "chat_purchases"].map(t => {
+      let q = db(t).distinct("actor_name");
+      if (req.query.testWorlds) q = q.whereRaw("LOWER(world_id) LIKE ?", ["%test%"]);
+      else q = applyExcludes(q, null, req.query.excludeWorlds);
+      return q;
+    }));
+    res.json([...new Set(lists.flat().map(r => r.actor_name).filter(Boolean))].sort());
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Per weapon / spell / feature. Damage and kills come from HP Updated cards,
+// paired with the item card that rolled them; "+" entries carry their own item.
 app.get("/api/items", authMiddleware, async (req, res) => {
-  const session = req.query.session;
-  const excludeWorlds = req.query.excludeWorlds;
   try {
-    let ts, p;
-    if (!session || session === "all") { ts = await getLatestTimestamp(excludeWorlds); p = "l_"; }
-    else { ts = new Date(session); p = "s_"; }
-    if (!ts) return res.json([]);
-
-    let q = db("item_stats").select("actor_name", "item_name",
-      db.raw(`SUM(${p}num_attacks) as num_attacks`), db.raw(`SUM(${p}damage_total) as damage_total`),
-      db.raw(`SUM(${p}num_attack_critical) as num_crits`), db.raw(`MAX(${p}max_damage) as max_damage`),
-      db.raw(`SUM(${p}kills) as kills`)
-    ).where("uploaded_at", ts).groupBy("actor_name", "item_name").orderBy("damage_total", "desc");
-    q = applyExcludes(q, req.query.exclude, excludeWorlds);
-    const rows = await q;
-    // Manual damage / kills recorded against a weapon, spell or feature
-    const [dmg, kill] = await Promise.all([
-      manualTotals("damage", session, req, ["item_name"]), manualTotals("kill", session, req, ["item_name"]),
-    ]);
-    const find = (actor, item) => {
-      let row = rows.find(r => r.actor_name === actor && r.item_name === item);
-      if (!row) { row = { actor_name: actor, item_name: item, num_attacks: 0, damage_total: 0, num_crits: 0, max_damage: 0, kills: 0 }; rows.push(row); }
-      return row;
-    };
-    for (const d of dmg) if (d.item_name) {
-      const row = find(d.actor_name, d.item_name);
-      row.damage_total = (Number(row.damage_total) || 0) + d.amount;
-      row.max_damage = Math.max(Number(row.max_damage) || 0, d.max_amount);
-    }
-    for (const k of kill) if (k.item_name) {
-      const row = find(k.actor_name, k.item_name);
-      row.kills = (Number(row.kills) || 0) + k.n;
-    }
-    rows.sort((x, y) => (Number(y.damage_total) || 0) - (Number(x.damage_total) || 0));
+    const T = (cond, val = "1") => db.raw(`SUM(CASE WHEN ${cond} THEN ${val} ELSE 0 END)`).toString();
+    let q = db("chat_outcomes").select("actor_name", "item_name",
+        db.raw(`${T("(outcome_type = 'attack' AND COALESCE(detail, '') <> 'manual-hit') OR outcome_type = 'attack_nt'")} as num_attacks`),
+        db.raw(`${T("outcome_type = 'damage'", "COALESCE(amount, 0)")} as damage_total`),
+        db.raw(`${T("outcome_type = 'crit'", "COALESCE(amount, 0)")} as num_crits`),
+        db.raw("MAX(CASE WHEN outcome_type IN ('damage', 'max_hit') THEN amount ELSE 0 END) as max_damage"),
+        db.raw(`${T("outcome_type = 'kill'")} as kills`))
+      .whereNotNull("item_name").whereIn("outcome_type", ["attack", "attack_nt", "damage", "crit", "max_hit", "kill"])
+      .groupBy("actor_name", "item_name");
+    q = applyRange(q, await sessionRange(req.query.session));
+    q = applyExcludes(q, req.query.exclude, req.query.excludeWorlds);
+    const rows = (await q).map(r => {
+      for (const k of ["num_attacks", "damage_total", "num_crits", "max_damage", "kills"]) r[k] = Number(r[k]) || 0;
+      return r;
+    });
+    rows.sort((x, y) => y.damage_total - x.damage_total);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Damage dealt / taken by damage type
 app.get("/api/damage-types", authMiddleware, async (req, res) => {
-  const session = req.query.session;
-  const excludeWorlds = req.query.excludeWorlds;
   try {
-    let ts, scope;
-    if (!session || session === "all") { ts = await getLatestTimestamp(excludeWorlds); scope = "lifetime"; }
-    else { ts = new Date(session); scope = "session"; }
-    if (!ts) return res.json([]);
-
-    let q = db("damage_by_type").select("actor_name", "category", "damage_type")
-      .sum("amount as amount").where("scope", scope).where("uploaded_at", ts)
-      .groupBy("actor_name", "category", "damage_type").orderBy("amount", "desc");
-    q = applyExcludes(q, req.query.exclude, excludeWorlds);
-    const rows = await q;
-    // Manual damage dealt / taken with a damage type counts towards that type
+    const rows = [];
     for (const [type, category] of [["damage", "dealt"], ["damage_taken", "taken"]]) {
-      for (const d of await manualTotals(type, session, req, ["detail"])) {
-        if (!d.detail) continue;
-        const row = rows.find(r => r.actor_name === d.actor_name && r.category === category && r.damage_type === d.detail);
-        if (row) row.amount = (Number(row.amount) || 0) + d.amount;
-        else rows.push({ actor_name: d.actor_name, category, damage_type: d.detail, amount: d.amount });
+      for (const d of await manualTotals(type, req.query.session, req, ["detail"])) {
+        rows.push({ actor_name: d.actor_name, category, damage_type: d.detail || "untyped", amount: d.amount });
       }
     }
-    rows.sort((x, y) => (Number(y.amount) || 0) - (Number(x.amount) || 0));
+    rows.sort((x, y) => y.amount - x.amount);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

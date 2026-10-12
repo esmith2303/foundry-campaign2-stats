@@ -3,14 +3,14 @@
  * how each player character did, the MVP and the achievements they earned. It
  * is also saved to chat as a card (with a button to open the popup again).
  *
- * The GM's client does the work: it notes midi-qol's counters when combat
- * starts, and when the combat is deleted (End Combat) it reads the chat log for
- * the fight, works out the recap (compute.mjs) and shares it.
+ * The GM's client does the work: it notes when combat starts, and when the
+ * combat is deleted (End Combat) it reads the chat log for the fight, works out
+ * the recap (compute.mjs) and shares it.
  */
 import { MODULE_ID, escapeHtml } from "../abilities/shared.mjs";
 import { isPrimaryGM } from "../QuickActions.mjs";
 import { openPopup } from "../popup.mjs";
-import { computeRecap, midiSnapshot, ACHIEVEMENTS } from "./compute.mjs";
+import { computeRecap, ACHIEVEMENTS } from "./compute.mjs";
 
 const SOCKET = `module.${MODULE_ID}`;
 const FLAG = "recapStart";
@@ -25,7 +25,6 @@ export function registerCombatRecap() {
 }
 
 const enabled = () => { try { return game.settings.get(MODULE_ID, "combatRecap") !== false; } catch { return true; } };
-const midiStats = () => globalThis.MidiQOL?.gameStats?.currentStats ?? (() => { try { return game.settings.get("midi-qol", "RollStats"); } catch { return {}; } })();
 
 function partyIn(combat) {
   const seen = new Map();
@@ -38,9 +37,8 @@ function partyIn(combat) {
 
 async function noteStart(combat) {
   if (!isPrimaryGM() || !combat || combat.getFlag?.(MODULE_ID, FLAG)) return;
-  const pcs = partyIn(combat);
   try {
-    await combat.setFlag(MODULE_ID, FLAG, { start: Date.now(), midi: midiSnapshot(midiStats(), pcs.map(p => p.id)) });
+    await combat.setFlag(MODULE_ID, FLAG, { start: Date.now() });
   } catch (e) { console.warn(`${MODULE_ID} | couldn't note the combat start`, e); }
 }
 
@@ -63,7 +61,6 @@ async function onCombatEnd(combat) {
     .map(m => m.toObject());
   const recap = computeRecap({
     messages, pcs, enemies, rounds: combat.round, start, end, scene: combat.scene?.name ?? "",
-    midiStart: noted?.midi ?? {}, midiEnd: midiSnapshot(midiStats(), pcs.map(p => p.id)),
   });
 
   await ChatMessage.create({

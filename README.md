@@ -7,33 +7,54 @@ backend that records campaign stats and serves them to the dashboard.
 
 ```
 Foundry (GM clicks ☁↑ Upload)
- ├─ chat log ──▶ scripts/extract.mjs ──▶ POST /api/chat-events ──▶ chat_dice, chat_outcomes
- └─ midi-qol stats snapshot ─────────────▶ POST /api/roll-stats  ──▶ actor_stats, item_stats, damage_by_type
+ ├─ chat log ──▶ scripts/extract.mjs ──▶ POST /api/chat-events ──▶ chat_dice, chat_outcomes, chat_purchases
+ └─ end of session ──────────────────────▶ POST /api/roll-stats  ──▶ stat_uploads
 ```
 
-- **Dice, attacks, saves, checks, death saves and heals** are read from the
-  chat log at upload time by `scripts/extract.mjs`. Nothing is counted live.
-  Every event is keyed by its chat message ID, and the server replaces what it
-  has for a message whenever that message is uploaded again — so uploads are
-  idempotent and re-uploading can only correct, never double count.
-- **Damage, kills, items etc.** still come from midi-qol's own stats.
-- A **session** on the dashboard is one stats upload; dice/outcomes belong to
-  the session whose upload follows them.
+- **Every stat** is read from the chat log at upload time by
+  `scripts/extract.mjs`. Nothing is counted live. Every event is keyed by its
+  chat message ID, and the server replaces what it has for a message whenever
+  that message is uploaded again — so uploads are idempotent and re-uploading
+  can only correct, never double count. **Upload before clearing the chat.**
+- **midi-qol's own counters aren't used** (since 1.7.0). Checked against a
+  session's chat log, they count damage rolled on misses, area damage at full
+  value for every target (even ones that saved for half), every damage or
+  healing use as an "attack", the saves enemies made against your spells as
+  *your* saves, and kills unreliably. midi-qol is still required: its chat
+  cards say whether an attack hit, and its "HP Updated" card (posted when
+  damage or healing is applied) is where damage, kills, healing and damage
+  taken are read from.
+- A **session** on the dashboard is one stats upload; events belong to the
+  session whose upload follows them.
 
 ### What the extractor counts
 
 | Stat | Source |
 |------|--------|
 | Dice | `message.rolls` only (midi-qol's flag copies of the same rolls are ignored), every die including dropped adv/dis dice; Monk's TokenBar request rolls; skill-check card breakdowns |
-| Attacks | PC attack cards with at least one target — midi-qol's `isHit` (falls back to d20/AC) |
+| Attacks | PC attack rolls. Hit % only uses those with a target — midi-qol's `isHit` (falls back to d20/AC) |
+| Crits / fumbles | Attack rolls midi-qol marked critical / fumbled (else a natural 20 / 1) |
+| Damage dealt | midi-qol "HP Updated" cards: damage after saves, resistances and immunities, to anyone outside the party (overkill included), split by damage type, credited to the weapon/spell card it came from; plus Add Damage |
+| Max hit | The biggest single "HP Updated" hit on one target, Add Damage, or Add Other's biggest hit |
+| Kills | A PC's damage taking a creature (not a party member) from above 0 HP to 0, plus Add Kill |
+| Damage taken | "HP Updated" damage to a party member (from anyone, friendly fire included), plus Take Damage |
+| Healing | HP actually restored on "HP Updated" cards (not past max; temp HP isn't healing), plus "+" button heals |
 | Saves | Each target's `saved` result on any card (e.g. a monster's spell), Monk's TokenBar requests with a DC, standalone save rolls with a DC |
 | Checks | Skill-check cards, Monk's TokenBar requests with a DC, standalone checks with a DC |
 | Death saves | Death save rolls (≥10 or a natural 20) |
-| Heals | PC uses of a healing activity, plus "+" button heals (Lay on Hands, Healer, Add Healing — with amounts) |
+| Heals (count) | PC uses of a healing activity, plus "+" button heals (Lay on Hands, Healer, Add Healing) |
 
 Only player characters are tracked.
 
 ## Abilities ("+" toolbar button)
+
+**The party** is the characters assigned to the players (Configure Player →
+Character), so the GM's lists — Abilities, heal targets, the shop's buyers,
+the skill check and skills sheet — show just those, not every sheet a player
+owns. If no player has a character assigned, every player-owned character
+counts. Players only ever act as characters they own, and only heal party
+members; the GM's client checks both. At upload, "+" entries and receipts only
+count if they were posted by the character's owner or a GM.
 
 Every player gets a **+** button in the token controls. Changes to other
 characters are applied by the GM's client (the GM must be logged in). Every
@@ -48,6 +69,15 @@ Always at the top, for every character:
 | Add Healing | Pick a PC (or "None" for stats only) and a set amount or dice roll; the PC is healed (never past max HP). |
 | Take Damage | A set amount or dice roll, optional damage type, and "Apply to character sheet" (on by default). On: the amount comes straight off HP (temp HP first; resistances, vulnerabilities and immunities are ignored). Off: stats only, for damage already on the sheet. |
 | Add Other | Stats only. +/− counts of attacks, hits (plus an optional biggest hit, which replaces Max Hit only if bigger), crits, fumbles, saves passed and saves failed. Adding hits or fumbles adds attacks and crits add hits; Attacks can then be lowered (even below hits) when the attack is already counted but no hit/miss was (e.g. no target). **Corrections** (Miss → hit, Failed save → passed) fix a result Foundry got wrong, e.g. the wrong AC or DC: they move an already-recorded miss / failed save without adding an attack or save. |
+
+**Undo**: every "+" card has an Undo button (click twice) for the GM, whoever
+posted it, and the owner of that character. It puts back everything the action
+changed — HP and temp HP, Lay on Hands pool, Healer's Kit uses and hit dice —
+relative to now, so anything that happened since is kept. The card stays in
+chat, struck through and marked "Undone by …", and stops counting in the stats
+(the next upload removes it). Cards from before this version can be undone for
+the stats; Add Healing and Lay on Hands also restore the sheet, Take Damage and
+Healer can't (fix HP by hand).
 
 Then the character's sheet abilities, alphabetically:
 
@@ -139,9 +169,9 @@ hit, hits, kills, healing, damage taken, natural 20s and 1s — with the
 **achievements** they earned. It's also saved to chat with a "View recap"
 button. Turn it off in the module settings ("Combat recap").
 
-Numbers come from midi-qol's counters (noted at the start and end of the
-fight) plus the chat log for the fight, read the same way as the dashboard
-("+" button entries included).
+Numbers come from the chat log for the fight, read by the same extractor as
+the dashboard ("+" button entries included), so a recap always agrees with
+the dashboard.
 
 | Achievement | For |
 |---|---|
@@ -180,5 +210,7 @@ Other scripts in `backend/`: `upload-file.js` (load a midi-qol JSON export),
 `clear-db.js`, `dedupe-existing.js`. DB backups: `scripts/backup-db.sh` /
 `restore-db.sh` (password from `~/.pgpass`).
 
-`dice_rolls` and `roll_outcomes` are the old live-tracking tables; they're no
-longer read and can be dropped once you're happy with the new numbers.
+`stat_uploads` marks where each session ends (created on first start from the
+old `actor_stats` uploads). `actor_stats`, `item_stats`, `damage_by_type`
+(midi-qol's counters), `dice_rolls` and `roll_outcomes` are no longer read and
+can be dropped once you're happy with the new numbers.

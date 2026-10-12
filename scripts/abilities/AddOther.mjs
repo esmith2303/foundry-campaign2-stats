@@ -171,7 +171,7 @@ function renderPanel(dialog, { actor, close, back }) {
           ability: "add-other", actorId: actor.id,
           other: { attacks: t.attacks, hits: t.hits, crits: t.crits, fumbles: t.fumbles,
                    saveSuccess: t.saveSuccess, saveFail: t.saveFail, maxHit: t.maxHit,
-                   missToHit: t.missToHit, failToPass: t.failToPass },
+                   missToHit: t.missToHit, failToPass: t.failToPass }, undo: [],
         } } },
       });
       ui.notifications.info(`Stats recorded for ${actor.name}.`);

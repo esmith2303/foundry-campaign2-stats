@@ -4,7 +4,16 @@
  * This is the ONLY place that decides what a roll means. It is used by:
  *   - the Foundry module at upload time (reads game.messages)
  *   - scripts/process-chat-export.mjs (reads a chat-log export JSON)
- * so live uploads and backfills always produce identical numbers.
+ *   - the end-of-combat recap
+ * so live uploads, backfills and recaps always produce identical numbers.
+ *
+ * Every stat comes from the chat log. midi-qol's own counters (its "RollStats")
+ * are NOT used: they count damage rolled on misses, area damage at full value
+ * for every target, every damage/heal use as an "attack", the saves ENEMIES
+ * made against your spells as your saves, and kills unreliably. What we do use
+ * from midi-qol is what it writes on its chat cards: hit/miss, and the
+ * "HP Updated" card it posts when damage or healing is applied (who dealt it,
+ * each target's HP before and after, damage after saves/resistances, types).
  *
  * Every event is keyed by its chat message ID, and the backend replaces all
  * events for a message when it is uploaded again — so uploading the same chat
@@ -65,6 +74,59 @@ export function actorIdFromUuid(uuid) {
   return m ? m[1] : null;
 }
 
+const ENTITIES = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&#x27;": "'", "&apos;": "'" };
+const decode = (t) => t.replace(/&(?:amp|lt|gt|quot|apos|#39|#x27);/g, (e) => ENTITIES[e]);
+
+/** The weapon / spell / feature name on a dnd5e item card (null if none). */
+export function itemNameFromCard(message) {
+  const html = String(message?.content ?? "");
+  const name = /class="title"\s*>\s*([^<]+?)\s*</.exec(html)?.[1]
+            ?? /<img[^>]*class="gold-icon"[^>]*alt="([^"]+)"/.exec(html)?.[1];
+  return name ? decode(name).trim().slice(0, 255) || null : null;
+}
+
+const HEAL_TYPES = new Set(["healing", "temphp"]);
+
+/**
+ * One midi-qol "HP Updated" entry → what happened to that target.
+ * kind: "heal" (HP restored, capped at max), "temp" (temp HP only — not
+ * counted), "damage" (after saves / resistances / immunities, temp HP
+ * included, overkill included) or null (nothing changed).
+ * byType: damage split by type, scaled so it adds up to the total.
+ */
+export function readHpEntry(u) {
+  const detail = Array.isArray(u?.damageDetail) ? u.damageDetail : [];
+  const oldHP = Number(u?.oldHP) || 0, newHP = Number(u?.newHP) || 0;
+  const healing = detail.length && detail.every(d => HEAL_TYPES.has(d?.type))
+               || Number(u?.healingAdjustedTotalDamage) < 0;
+  if (healing) {
+    const restored = Math.max(0, newHP - oldHP);
+    return restored > 0 ? { kind: "heal", amount: restored, oldHP, newHP }
+                        : { kind: detail.some(d => d?.type === "temphp") ? "temp" : null, amount: 0, oldHP, newHP };
+  }
+  const total = Math.max(0, Math.round(Number(u?.totalDamage) || 0));
+  if (!total) return { kind: null, amount: 0, oldHP, newHP };
+  // Split by type: the detail holds the values before saves, so scale them
+  const raw = new Map();
+  for (const d of detail) {
+    const v = Number(d?.value ?? d?.damage) || 0;
+    if (v > 0 && !HEAL_TYPES.has(d?.type)) raw.set(d?.type || "none", (raw.get(d?.type || "none") || 0) + v);
+  }
+  const rawSum = [...raw.values()].reduce((a, b) => a + b, 0);
+  const byType = [];
+  if (!rawSum) byType.push([null, total]);
+  else {
+    let left = total;
+    const parts = [...raw.entries()].sort((a, b) => b[1] - a[1]);
+    parts.forEach(([type, v], i) => {
+      const share = i === parts.length - 1 ? left : Math.round(total * v / rawSum);
+      left -= share;
+      if (share > 0) byType.push([type === "none" ? null : type, share]);
+    });
+  }
+  return { kind: "damage", amount: total, byType, oldHP, newHP, killed: oldHP > 0 && newHP <= 0 };
+}
+
 const CHECK_TYPES = new Set(["skill", "ability", "check", "tool"]);
 const SAVE_TYPES = new Set(["save", "savingthrow", "savingThrow"]);
 
@@ -81,15 +143,27 @@ function outcomeTypeFor(rollType) {
  * @param message  plain chat message data: { id|_id, timestamp, speaker, flags, rolls }
  * @param ctx      {
  *   isPlayerCharacter(actorId) → bool,
+ *   canUserAct(userId, actorId) → bool (optional: may this user post entries for this character?),
  *   actorName(actorId, fallback) → string,
  *   resolveActorId?(uuid) → actorId|null   (live only: for token UUIDs without an Actor part)
  *   includeNpcs?: bool
  * }
+ * @param itemFor  optional (actorId) → item name, for HP Updated cards (which don't
+ *                 say which weapon/spell did it); extractAll() supplies it
  * @returns { messageId, timestamp, dice: [{actorId, actorName, dieType, face, count}],
- *            outcomes: [{actorId, actorName, type, success, key}] }
+ *            outcomes: [{actorId, actorName, type, success, key, amount, detail, item}] }
+ *
+ * Outcome types:
+ *   attack (hit/miss, targeted only) · attack_nt (attack roll with no target)
+ *   crit / fumble (amount = count) · damage (amount, detail = damage type)
+ *   max_hit (biggest single hit on one target) · kill · healing (HP restored)
+ *   damage_taken (amount, detail = type) · save · check · death · heal (one per
+ *   heal used / "+" heal with amount) · attack_fix / save_fix (corrections)
  */
-export function extractMessage(message, ctx) {
+export function extractMessage(message, ctx, itemFor = null) {
   const messageId = message.id ?? message._id;
+  // A "+" card that was undone counts for nothing (dice included)
+  if (message.flags?.[MODULE_ID]?.abilityUse?.reverted) return { messageId, timestamp: message.timestamp, dice: [], outcomes: [], purchases: [] };
   const flags = message.flags || {};
   const dnd = flags.dnd5e || {};
   const midi = flags["midi-qol"] || {};
@@ -158,22 +232,59 @@ export function extractMessage(message, ctx) {
       ?? (dnd.roll?.type === "attack" ? message.rolls?.[0] : null);
     const targets = Array.isArray(dnd.targets) && dnd.targets.length ? dnd.targets
                   : Array.isArray(midi.targets) ? midi.targets : [];
-    // An attack with no target can't hit or miss — skip it rather than call it a miss
-    if (asRollData(attackRoll) && targets.length) {
-      let hit = typeof midi.isHit === "boolean" ? midi.isHit : null;
-      if (hit === null) {
-        const d20 = keptD20(attackRoll);
-        const total = asRollData(attackRoll)?.total;
-        const ac = targets[0]?.ac;
-        if (d20 === 20) hit = true;
-        else if (d20 === 1) hit = false;
-        else if (typeof total === "number" && typeof ac === "number") hit = total >= ac;
+    if (asRollData(attackRoll)) {
+      const alias = message.speaker?.alias, item = itemNameFromCard(message);
+      const d20 = keptD20(attackRoll);
+      // An attack with no target can't hit or miss — counted as an attack, not in hit %
+      if (targets.length) {
+        let hit = typeof midi.isHit === "boolean" ? midi.isHit : null;
+        if (hit === null) {
+          const total = asRollData(attackRoll)?.total;
+          const ac = targets[0]?.ac;
+          if (d20 === 20) hit = true;
+          else if (d20 === 1) hit = false;
+          else if (typeof total === "number" && typeof ac === "number") hit = total >= ac;
+        }
+        addOutcome(speakerId, "attack", hit, "atk", alias, null, { item });
+      } else {
+        addOutcome(speakerId, "attack_nt", true, "atk", alias, null, { item });
       }
-      addOutcome(speakerId, "attack", hit, "atk", message.speaker?.alias);
+      // Crits / fumbles: midi-qol's flag (knows expanded crit ranges), else a natural 20 / 1
+      const crit = typeof midi.isCritical === "boolean" ? midi.isCritical : d20 === 20;
+      const fumble = typeof midi.isFumble === "boolean" ? midi.isFumble : d20 === 1;
+      if (crit) addOutcome(speakerId, "crit", true, "atk", alias, 1, { item });
+      if (fumble) addOutcome(speakerId, "fumble", true, "atk", alias, 1, { item });
     }
 
     // Heals: one per healing activity used
     if (dnd.activity?.type === "heal") addOutcome(speakerId, "heal", true, "heal", message.speaker?.alias);
+  }
+
+  // ── Damage / healing actually applied (midi-qol's "HP Updated" card) ───────
+  // One entry per target: who did it, HP before/after, damage after saves and
+  // resistances. Damage to a party member is damage taken (even friendly fire);
+  // damage to anyone else is damage dealt by the source, and taking them from
+  // above 0 HP to 0 is a kill.
+  if (Array.isArray(midi.undoDamage)) {
+    midi.undoDamage.forEach((u, i) => {
+      const src = resolve(midi.actorUuid) ?? resolve(u?.calcDamageOptions?.midi?.sourceActorUuid);
+      const tgt = u?.actorId ?? resolve(u?.actorUuid);
+      const r = readHpEntry(u);
+      if (!r.kind || r.kind === "temp") return;
+      const item = src ? itemFor?.(src) ?? null : null;
+      if (r.kind === "heal") {
+        if (src) addOutcome(src, "healing", true, `hp${i}`, null, r.amount, { item });
+        return;
+      }
+      if (tgt && ctx.isPlayerCharacter(tgt)) {
+        r.byType.forEach(([type, amt], j) => addOutcome(tgt, "damage_taken", true, `hp${i}t${j}`, null, amt, { detail: type }));
+        return;
+      }
+      if (!src) return;
+      r.byType.forEach(([type, amt], j) => addOutcome(src, "damage", true, `hp${i}d${j}`, null, amt, { detail: type, item }));
+      addOutcome(src, "max_hit", true, `hp${i}`, null, r.amount, { item });
+      if (r.killed) addOutcome(src, "kill", true, `hp${i}`, null, 1, { item });
+    });
   }
 
   // ── Saves made by the TARGETS of a card ────────────────────────────────────
@@ -198,7 +309,10 @@ export function extractMessage(message, ctx) {
   //         Add Healing, Healer kit uses). Older cards used a single `healing`.
   // damage: manual damage, added to total damage / damage type / item.
   // kill:   manual kill, added to kills.
-  if (abilityUse?.actorId) {
+  // A "+" entry only counts if whoever posted it owns that character (or is the GM)
+  const authorId = message.author ?? message.user ?? null;
+  const allowed = (actorId) => !ctx.canUserAct || !authorId || ctx.canUserAct(authorId, actorId);
+  if (abilityUse?.actorId && allowed(abilityUse.actorId)) {
     const who = abilityUse.actorId, alias = message.speaker?.alias, item = abilityUse.itemName ?? null;
     const heals = Array.isArray(abilityUse.heals) ? abilityUse.heals
                 : Number(abilityUse.healing) > 0 ? [Number(abilityUse.healing)] : [];
@@ -264,7 +378,7 @@ export function extractMessage(message, ctx) {
   // ── Shop receipts: purchases and sales (one row per item line, prices in copper)
   const purchases = [];
   for (const [kind, rec] of [["buy", flags[MODULE_ID]?.shopPurchase], ["sell", flags[MODULE_ID]?.shopSale]]) {
-    if (!rec?.actorId || !tracked(rec.actorId) || !Array.isArray(rec.lines)) continue;
+    if (!rec?.actorId || !tracked(rec.actorId) || !Array.isArray(rec.lines) || !allowed(rec.actorId)) continue;
     rec.lines.forEach((l, i) => {
       const qty = Math.floor(Number(l?.qty)) || 0, unitCp = Math.round(Number(l?.unitCp));
       if (!l?.name || !(qty > 0) || !Number.isFinite(unitCp) || unitCp < 0) return;
@@ -289,23 +403,59 @@ export function extractMessage(message, ctx) {
 
 /** Extract a whole chat log. Returns per-message results (including empty ones). */
 export function extractAll(messages, ctx) {
+  const itemFor = hpItemLinker(messages);
   const out = [];
   for (const m of messages) {
-    try { out.push(extractMessage(m, ctx)); }
+    try { out.push(extractMessage(m, ctx, itemFor(m))); }
     catch (e) { console.warn(`${MODULE_ID} | could not extract message ${m?.id ?? m?._id}:`, e); }
   }
   return out;
 }
 
+/**
+ * HP Updated cards don't name the weapon or spell, so pair each with the
+ * closest item card (within 3 minutes) from the same character that rolled
+ * damage or healing. Returns message → ((actorId) → item name | null).
+ */
+export function hpItemLinker(messages, windowMs = 180000) {
+  const cards = new Map();   // actorId → [{ ts, name }] sorted
+  for (const m of messages) {
+    const actorId = m?.speaker?.actor;
+    if (!actorId || m.flags?.["midi-qol"]?.undoDamage) continue;
+    const hasDamage = (m.rolls || []).some(r => asRollData(r)?.class === "DamageRoll");
+    if (!hasDamage) continue;
+    const name = itemNameFromCard(m);
+    if (!name) continue;
+    if (!cards.has(actorId)) cards.set(actorId, []);
+    cards.get(actorId).push({ ts: Number(m.timestamp) || 0, name });
+  }
+  for (const list of cards.values()) list.sort((a, b) => a.ts - b.ts);
+  return (m) => {
+    if (!Array.isArray(m?.flags?.["midi-qol"]?.undoDamage)) return null;
+    const ts = Number(m.timestamp) || 0;
+    return (actorId) => {
+      let best = null;
+      for (const c of cards.get(actorId) ?? []) {
+        const dt = Math.abs(c.ts - ts);
+        if (dt <= windowMs && (!best || dt < best.dt)) best = { dt, name: c.name };
+      }
+      return best?.name ?? null;
+    };
+  };
+}
+
 /** Per-actor totals, for logging / dry runs. */
 export function summarise(results) {
   const by = {};
-  const get = (id, name) => (by[id] ??= { name, dice: 0, d20: 0, outcomes: {}, healing: 0, bought: 0, spentCp: 0 });
+  const get = (id, name) => (by[id] ??= { name, dice: 0, d20: 0, outcomes: {}, healing: 0, damage: 0, kills: 0, taken: 0, bought: 0, spentCp: 0 });
   for (const r of results) {
     for (const d of r.dice) { const a = get(d.actorId, d.actorName); a.dice += d.count; if (d.dieType === 20) a.d20 += d.count; }
     for (const o of r.outcomes) {
       const a = get(o.actorId, o.actorName);
-      if (o.type === "heal" && o.amount) a.healing += o.amount;
+      if ((o.type === "heal" || o.type === "healing") && o.amount) a.healing += o.amount;
+      if (o.type === "damage") a.damage += o.amount || 0;
+      if (o.type === "kill") a.kills += 1;
+      if (o.type === "damage_taken") a.taken += o.amount || 0;
       const c = (a.outcomes[o.type] ??= { success: 0, failure: 0 });
       c[o.success ? "success" : "failure"]++;
     }

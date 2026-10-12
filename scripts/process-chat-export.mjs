@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Backfill / correct dice + outcome stats from a Foundry chat-log export.
+ * Backfill / correct all stats (dice, attacks, damage, kills, healing, saves…)
+ * from a Foundry chat-log export.
  *
  * Uses the same extractor as the Foundry module (scripts/extract.mjs), and the
  * backend replaces everything stored for each message it receives — so this is
@@ -71,7 +72,8 @@ for (const a of Object.values(summarise(results))) {
   const o = Object.entries(a.outcomes).map(([k, v]) => `${k} ${v.success}/${v.failure}`).join("  ");
   const shop = (a.bought ? `   bought ${a.bought} items, ${(a.spentCp / 100).toFixed(2)} gp` : "")
              + (a.sold ? `   sold ${a.sold} items, ${(a.earnedCp / 100).toFixed(2)} gp` : "");
-  console.log(`  ${a.name.padEnd(24)} dice ${String(a.dice).padStart(5)} (d20 ${String(a.d20).padStart(4)})   ${o}${shop}`);
+  console.log(`  ${a.name.padEnd(24)} dice ${String(a.dice).padStart(5)} (d20 ${String(a.d20).padStart(4)})   damage ${a.damage}  kills ${a.kills}  healing ${a.healing}  taken ${a.taken}${shop}`);
+  console.log(`  ${"".padEnd(24)} ${o}`);
 }
 
 if (opt("--out")) {

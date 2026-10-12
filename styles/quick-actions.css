@@ -243,3 +243,19 @@
 #qa-dialog .qa-apply-row label { min-width: 0; }
 #qa-dialog .qa-apply-row .qa-tag { overflow: hidden; text-overflow: ellipsis; }
 #qa-dialog .qa-apply-note { min-height: 2.7em; }
+
+/* Undo button on "+" cards, and how an undone card looks */
+.qa-card .qa-revert {
+  display: block; width: 100%; margin-top: .5em; padding: .25em .5em; cursor: pointer;
+  font-family: 'Cinzel', serif; font-size: .72em; letter-spacing: .08em; text-transform: uppercase;
+  background: transparent; color: #7a6f5c; border: 1px solid #c9bda4; border-radius: 3px; line-height: 1.6;
+}
+.qa-card .qa-revert:hover { color: #9c3b22; border-color: #9c3b22; }
+.qa-card .qa-revert.armed { background: #9c3b22; color: #fff; border-color: #9c3b22; }
+.qa-card .qa-revert:disabled { opacity: .6; cursor: default; }
+.qa-card .qa-reverted-banner {
+  margin: 0 0 .45em; padding: .3em .55em; border-radius: 3px; font-size: .8em; line-height: 1.35;
+  background: #f1e2d9; border: 1px solid #d3a995; color: #7d2f1b;
+}
+.qa-card.qa-reverted .qa-rows, .qa-card.qa-reverted .group-summary { opacity: .45; text-decoration: line-through; }
+.qa-card.qa-reverted .card-header { filter: grayscale(.8); }

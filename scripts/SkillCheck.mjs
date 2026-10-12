@@ -1,4 +1,5 @@
 import { addWindowControls } from "./windowControls.mjs";
+import { partyCharacters } from "./abilities/shared.mjs";
 // SkillCheck.mjs — GM tool: pick a skill in the popover → opens a check-config
 // dialog → posts a chat card with per-player dice buttons → players click to roll
 // → results stream back, with blind DC / blind roll / group check rules respected.
@@ -29,9 +30,7 @@ export function openSkillCheckDialog(skillKey) {
   const skillConfig = CONFIG.DND5E?.skills?.[skillKey];
   if (!skillConfig) return ui.notifications.warn("Unknown skill: " + skillKey);
 
-  const characters = game.actors.contents
-    .filter(a => a.hasPlayerOwner && (a.type === "character" || a.type === "npc"))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const characters = partyCharacters();   // the players' assigned characters
 
   if (!characters.length) return ui.notifications.warn("No player-owned characters found.");
 

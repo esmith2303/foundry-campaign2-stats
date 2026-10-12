@@ -66,7 +66,7 @@ function renderPanel(dialog, { actor, close, back }) {
         rolls: roll ? [roll] : [],
         flags: { [MODULE_ID]: { abilityUse: {
           ability: "add-damage", actorId: actor.id, itemName: item?.name ?? null,
-          damage: { amount, type, formula: roll?.formula ?? null },
+          damage: { amount, type, formula: roll?.formula ?? null }, undo: [],
         } } },
       });
       ui.notifications.info(`${amount} damage recorded for ${actor.name}.`);

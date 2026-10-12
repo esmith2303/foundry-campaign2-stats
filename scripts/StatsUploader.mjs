@@ -2,11 +2,11 @@ import { uploadEvents, eventsUrlFrom } from "./extract.mjs";
 
 /**
  * StatsUploader
- * 1. Uploads dice/outcome events from the whole chat log (idempotent — the
- *    server replaces anything already stored for those messages).
- * 2. Uploads midi-qol's session stats, then resets the midi-qol session.
+ * 1. Uploads every stat from the whole chat log (idempotent — the server
+ *    replaces anything already stored for those messages).
+ * 2. Marks the end of the session (POST /roll-stats with no midi-qol stats).
  * Events go first so a failure part-way can simply be retried without
- * creating a duplicate stats session.
+ * creating an extra session.
  */
 export class StatsUploader {
   #moduleId;
@@ -22,13 +22,13 @@ export class StatsUploader {
     return headers;
   }
 
-  async upload(snapshot) {
+  async upload(body) {
     const apiUrl = game.settings.get(this.#moduleId, "apiUrl");
     if (!apiUrl) return { success: false, error: "No API URL configured." };
 
     let response;
     try {
-      response = await fetch(apiUrl, { method: "POST", headers: this.#headers(), body: JSON.stringify(snapshot) });
+      response = await fetch(apiUrl, { method: "POST", headers: this.#headers(), body: JSON.stringify(body) });
     } catch (e) {
       return { success: false, error: `Network error: ${e.message}` };
     }
@@ -60,23 +60,11 @@ export class StatsUploader {
       return ui.notifications.error(`Stats: roll upload failed — ${e.message}. Nothing was reset; try again.`);
     }
 
-    // 2. midi-qol stats
-    const snapshot = await collector.snapshot();
-    const actorCount = Object.keys(snapshot.stats).length;
-    if (!actorCount) {
-      return ui.notifications.warn("Stats: ✔ rolls uploaded, but midi-qol had no session stats to upload.");
-    }
-    const result = await this.upload(snapshot);
+    // 2. End the session
+    const result = await this.upload({ ...collector.session(), stats: {} });
     if (!result.success) {
-      return ui.notifications.error(`Stats: rolls uploaded, but midi-qol stats failed — ${result.error}`);
+      return ui.notifications.error(`Stats: rolls uploaded, but the session couldn't be closed — ${result.error}. Try again.`);
     }
-
-    try {
-      await MidiQOL.gameStats.endSession();
-      ui.notifications.info(`Stats: ✔ uploaded rolls and ${actorCount} actor(s); session reset.`);
-    } catch (e) {
-      console.warn(`${this.#moduleId} | Failed to reset midi-qol session:`, e);
-      ui.notifications.info(`Stats: ✔ uploaded rolls and ${actorCount} actor(s).`);
-    }
+    ui.notifications.info(`Stats: ✔ uploaded ${results.length} chat message(s); new session started.`);
   }
 }

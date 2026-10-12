@@ -6,11 +6,36 @@ export function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 
-/** The party: player-owned characters, alphabetical. */
+/**
+ * The party, alphabetical: the characters assigned to the players
+ * (User Configuration → Character), so other sheets players happen to own
+ * (old characters, test sheets…) don't fill up the lists. If no player has a
+ * character assigned, every player-owned character counts.
+ */
 export function partyCharacters() {
-  return game.actors.contents
-    .filter(a => a.type === "character" && a.hasPlayerOwner)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const users = game.users?.contents ?? [];
+  const assigned = new Map();
+  for (const u of users) {
+    if (u.isGM) continue;
+    const c = u.character;
+    if (c && c.type === "character") assigned.set(c.id, c);
+  }
+  const list = assigned.size ? [...assigned.values()]
+    : game.actors.contents.filter(a => a.type === "character" && a.hasPlayerOwner);
+  return list.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export const isPartyMember = (actor) => !!actor && partyCharacters().some(a => a.id === actor.id);
+
+/** GM side: the requesting user must own the character they're acting as. */
+export function assertOwns(actor, user) {
+  if (!actor) throw new Error("Character not found.");
+  if (!user?.isGM && !actor.testUserPermission(user, "OWNER")) throw new Error("You don't own that character.");
+}
+/** GM side: players can only heal (etc.) party members; the GM can pick anyone. */
+export function assertPartyTarget(target, user) {
+  if (!target) throw new Error("That character no longer exists.");
+  if (!user?.isGM && !isPartyMember(target)) throw new Error(`${target.name} isn't in the party.`);
 }
 
 /** Current / effective max / missing HP of an actor. */

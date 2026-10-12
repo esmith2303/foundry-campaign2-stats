@@ -8,7 +8,7 @@
  * Several uses (across several patients) can be applied from one popup. The
  * GM's client rolls, spends the hit dice and kit uses, heals, and posts one card.
  */
-import { MODULE_ID, escapeHtml, statCard, partyCharacters, hpOf, profOf, hitDiceOf, hitDiceLeft, hitDiceLabel, usesLeft, spendUses } from "./shared.mjs";
+import { MODULE_ID, escapeHtml, statCard, partyCharacters, hpOf, profOf, hitDiceOf, hitDiceLeft, hitDiceLabel, usesLeft, spendUses, assertOwns, assertPartyTarget } from "./shared.mjs";
 
 const APPLY = "healer.apply";
 
@@ -33,8 +33,7 @@ function findKit(actor) {
 
 async function gmApply({ actorId, featId, kitId, plan, reroll = true } = {}, user) {
   const actor = game.actors.get(actorId);
-  if (!actor) throw new Error("Character not found.");
-  if (!user?.isGM && !actor.testUserPermission(user, "OWNER")) throw new Error("You don't own that character.");
+  assertOwns(actor, user);
   const feat = actor.items.get(featId);
   if (!isHealerFeat(feat)) throw new Error("The Healer feat isn't on that character.");
   const kit = actor.items.get(kitId);
@@ -49,14 +48,14 @@ async function gmApply({ actorId, featId, kitId, plan, reroll = true } = {}, use
   if (totalUses > kitLeft) throw new Error(`Not enough Healer's Kit uses: ${totalUses} needed, ${kitLeft} left.`);
   const patients = wanted.map(p => {
     const t = game.actors.get(p.actorId);
-    if (!t) throw new Error("A selected character no longer exists.");
+    assertPartyTarget(t, user);
     if (hitDiceLeft(t) < p.count) throw new Error(`${t.name} only has ${hitDiceLeft(t)} hit dice left.`);
     if (hpOf(t).missing <= 0) throw new Error(`${t.name} is already at full HP.`);
     return { target: t, count: p.count };
   });
 
   const prof = profOf(actor);
-  const rows = [], rolls = [], heals = [];
+  const rows = [], rolls = [], heals = [], undo = [];
   let hdSpent = 0;
   for (const { target, count } of patients) {
     const hp = hpOf(target);
@@ -67,6 +66,7 @@ async function gmApply({ actorId, featId, kitId, plan, reroll = true } = {}, use
       const applied = Math.max(0, Math.min(roll.total, hp.max - current));
       current += applied;
       await hd.item.update({ [hd.path]: hd.spent + 1 });
+      undo.push({ kind: "spent", actorId: target.id, itemId: hd.item.id, path: hd.path, delta: 1 });
       hdSpent++;
       rolls.push(roll);
       heals.push(applied);
@@ -75,10 +75,14 @@ async function gmApply({ actorId, featId, kitId, plan, reroll = true } = {}, use
         meta: [`hit die d${hd.faces}`, applied < roll.total && `capped at full HP (${roll.total})`],
       });
     }
-    if (current !== hp.value) await target.update({ "system.attributes.hp.value": current });
+    if (current !== hp.value) {
+      await target.update({ "system.attributes.hp.value": current });
+      undo.push({ kind: "hp", actorId: target.id, value: current - hp.value });
+    }
     rows[rows.length - 1].meta.push(`HP ${current} / ${hp.max}`);
   }
   await spendUses(kit, totalUses);
+  undo.unshift({ kind: "uses", actorId: actor.id, itemId: kit.id, count: totalUses });
   const kitAfter = usesLeft(kit);
 
   await ChatMessage.create({
@@ -89,7 +93,7 @@ async function gmApply({ actorId, featId, kitId, plan, reroll = true } = {}, use
       summary: `${totalUses} kit use${totalUses === 1 ? "" : "s"} · ${hdSpent} hit ${hdSpent === 1 ? "die" : "dice"} spent`,
     }),
     rolls,
-    flags: { [MODULE_ID]: { abilityUse: { ability: "healer", actorId: actor.id, itemName: feat.name, heals, kitUses: totalUses } } },
+    flags: { [MODULE_ID]: { abilityUse: { ability: "healer", actorId: actor.id, itemName: feat.name, heals, kitUses: totalUses, undo } } },
   });
   return { totalUses, kitAfter, healed: heals.reduce((s, h) => s + h, 0) };
 }

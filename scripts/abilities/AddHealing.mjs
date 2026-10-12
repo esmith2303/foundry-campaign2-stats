@@ -2,14 +2,13 @@
  * Add Healing — heals a party member for an amount or a dice roll (the GM's
  * client applies the HP), or "None" to record the healing in the stats only.
  */
-import { MODULE_ID, escapeHtml, statCard, partyCharacters, hpOf, mountAmountPicker, resolveAmount } from "./shared.mjs";
+import { MODULE_ID, escapeHtml, statCard, partyCharacters, hpOf, mountAmountPicker, resolveAmount, assertOwns, assertPartyTarget } from "./shared.mjs";
 
 const APPLY = "add-healing.apply";
 
 async function gmApply({ actorId, targetId, amount, roll } = {}, user) {
   const actor = game.actors.get(actorId);
-  if (!actor) throw new Error("Character not found.");
-  if (!user?.isGM && !actor.testUserPermission(user, "OWNER")) throw new Error("You don't own that character.");
+  assertOwns(actor, user);
   const r = roll ? Roll.fromData(roll) : null;
   const total = Math.max(0, Math.floor(r ? r.total : Number(amount)));
   if (!(total > 0)) throw new Error("Nothing to heal.");
@@ -17,7 +16,7 @@ async function gmApply({ actorId, targetId, amount, roll } = {}, user) {
   let row;
   if (targetId) {
     const target = game.actors.get(targetId);
-    if (!target) throw new Error("That character no longer exists.");
+    assertPartyTarget(target, user);
     const hp = hpOf(target);
     if (hp.missing <= 0) throw new Error(`${target.name} is already at full HP.`);
     const applied = Math.min(total, hp.missing);
@@ -38,7 +37,8 @@ async function gmApply({ actorId, targetId, amount, roll } = {}, user) {
       summary: row.actorId ? "Added manually" : "Added manually for stats — no character healed",
     }),
     rolls: r ? [r] : [],
-    flags: { [MODULE_ID]: { abilityUse: { ability: "add-healing", actorId: actor.id, heals: [row.applied], targets: [row] } } },
+    flags: { [MODULE_ID]: { abilityUse: { ability: "add-healing", actorId: actor.id, heals: [row.applied], targets: [row],
+      undo: row.actorId && row.applied > 0 ? [{ kind: "hp", actorId: row.actorId, value: row.applied }] : [] } } },
   });
   return row;
 }

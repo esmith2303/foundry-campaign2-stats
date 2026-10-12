@@ -20,6 +20,7 @@ import { Healer } from "./abilities/Healer.mjs";
 import { LayOnHands } from "./abilities/LayOnHands.mjs";
 import { MODULE_ID, escapeHtml, partyCharacters } from "./abilities/shared.mjs";
 import { addWindowControls } from "./windowControls.mjs";
+import { REVERT, gmRevert, addRevertButton } from "./abilities/revert.mjs";
 
 const SOCKET = `module.${MODULE_ID}`;
 export const QUICK_ACTIONS_TOOL = "stats-quick-actions";
@@ -29,7 +30,7 @@ const GENERAL = [AddKill, AddDamage, AddHealing, TakeDamage, AddOther];
 // Shown when the character's sheet has them; listed alphabetically
 const ABILITIES = [Healer, LayOnHands];
 
-const GM_HANDLERS = Object.assign({}, ...[...GENERAL, ...ABILITIES].map(a => a.gmActions || {}));
+const GM_HANDLERS = Object.assign({}, ...[...GENERAL, ...ABILITIES].map(a => a.gmActions || {}), { [REVERT]: gmRevert });
 
 /** Let other features (e.g. the shop) run actions on the GM's client via runAsGM. */
 export function registerGmAction(name, handler) {
@@ -43,8 +44,13 @@ export function registerQuickActions() {
   game.socket.on(SOCKET, onSocket);
   // Click a result box on our chat cards to show/hide its dice.
   // V13 fires renderChatMessageHTML (HTMLElement); V11/12 renderChatMessage (jQuery).
-  Hooks.on("renderChatMessageHTML", (_m, html) => bindQaCards(html));
-  Hooks.on("renderChatMessage", (_m, html) => bindQaCards(html));
+  // …and add an Undo button to "+" cards for whoever may undo them
+  const onRender = (m, html) => {
+    bindQaCards(html);
+    addRevertButton(m, html instanceof HTMLElement ? html : html?.[0] ?? html?.get?.(0), runAsGM);
+  };
+  Hooks.on("renderChatMessageHTML", onRender);
+  Hooks.on("renderChatMessage", onRender);
 }
 
 export function bindQaCards(html) {

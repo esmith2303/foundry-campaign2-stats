@@ -90,10 +90,12 @@ function renderPanel(dialog, { actor, close, back }) {
       const apply = applyCb.checked;
 
       let hpMeta = "Stats only — HP not changed";
+      const undo = [];
       if (apply) {
         const before = hpState(actor);
         const after = afterDamage(before, amount);
         await actor.update({ "system.attributes.hp.temp": after.temp, "system.attributes.hp.value": after.value });
+        undo.push({ kind: "hp", actorId: actor.id, value: after.value - before.value, temp: after.temp - before.temp });
         hpMeta = `HP ${hpText(before.value, before.max, before.temp)} → ${hpText(after.value, before.max, after.temp)}`;
       }
 
@@ -108,7 +110,7 @@ function renderPanel(dialog, { actor, close, back }) {
         // No `rolls`: these dice are the enemy's, not this character's
         flags: { [MODULE_ID]: { abilityUse: {
           ability: "take-damage", actorId: actor.id,
-          taken: { amount, type, applied: apply, formula: roll?.formula ?? null },
+          taken: { amount, type, applied: apply, formula: roll?.formula ?? null }, undo,
         } } },
       });
       ui.notifications.info(apply ? `${actor.name} took ${amount} damage.` : `${amount} damage taken recorded for ${actor.name}.`);

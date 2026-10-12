@@ -2,28 +2,13 @@
  * Combat recap numbers and achievements. Pure JS (no Foundry globals) so it can
  * be tested outside Foundry; CombatRecap.mjs gathers the inputs.
  *
- * Sources, per player character in the fight:
- *   - midi-qol's lifetime counters at the start and end of combat (damage dealt
- *     and taken, healing, kills, crits, fumbles) — the most accurate numbers
- *   - the chat log between start and end, through the same extractor as the
- *     dashboard: hits/misses, saves, death saves, the "+" button entries
- *   - the dice in those messages: natural 20s and 1s, damage rolls (biggest hit,
- *     and damage dealt when midi-qol's counters aren't available)
+ * Every number comes from the chat log between the start and end of combat,
+ * through the same extractor as the dashboard (scripts/extract.mjs): hits and
+ * misses, crits, fumbles, damage dealt and taken and kills (midi-qol's "HP
+ * Updated" cards), healing, saves, death saves and the "+" button entries.
+ * Natural 20s and 1s are counted from every d20 a PC rolled.
  */
 import { extractMessage, asRollData, MODULE_ID } from "../extract.mjs";
-
-const MIDI_KEYS = ["damageTotal", "damageTaken", "healingDone", "kills", "numAttackCritical", "numAttackFumble"];
-
-/** Snapshot of midi-qol's lifetime counters for some actors. */
-export function midiSnapshot(stats, actorIds) {
-  const out = {};
-  for (const id of actorIds) {
-    const l = stats?.[id]?.lifetime;
-    if (!l) continue;
-    out[id] = Object.fromEntries(MIDI_KEYS.map(k => [k, Number(l[k]) || 0]));
-  }
-  return out;
-}
 
 function d20Results(roll) {
   // Natural results of the kept d20 on an attack / check / save roll
@@ -44,33 +29,37 @@ const isDamageRoll = (roll) => roll?.class === "DamageRoll" || roll?.options?.ty
  * @param {object[]} p.messages   chat messages (plain objects) in the fight, oldest first
  * @param {object[]} p.pcs        [{ id, name, img }]
  * @param {object[]} p.enemies    [{ name, defeated }]
- * @param {object}   p.midiStart  midiSnapshot at the start (may be empty)
- * @param {object}   p.midiEnd    midiSnapshot now
  * @param {number}   p.rounds, p.start, p.end, p.scene
  */
-export function computeRecap({ messages = [], pcs = [], enemies = [], midiStart = {}, midiEnd = {}, rounds = 0, start, end, scene = "" }) {
+export function computeRecap({ messages = [], pcs = [], enemies = [], rounds = 0, start, end, scene = "" }) {
   const ids = new Set(pcs.map(p => p.id));
   const ctx = { isPlayerCharacter: (id) => ids.has(id), actorName: (id, f) => pcs.find(p => p.id === id)?.name ?? f };
   const S = Object.fromEntries(pcs.map(p => [p.id, {
     id: p.id, name: p.name, img: p.img ?? null,
-    damage: 0, rolledDamage: 0, biggestHit: 0, taken: 0, healing: 0, kills: 0, crits: 0, fumbles: 0,
+    damage: 0, biggestHit: 0, taken: 0, healing: 0, kills: 0, crits: 0, fumbles: 0,
     hits: 0, misses: 0, savesPassed: 0, savesFailed: 0, deathSaves: 0, nat20: 0, nat1: 0,
-    firstHitAt: null, midi: false,
+    firstHitAt: null,
   }]));
 
+  const downed = new Set();   // non-PC creatures taken to 0 HP in the fight
   for (const m of messages) {
     const speaker = m.speaker?.actor;
     const ts = m.timestamp ?? 0;
-    // Dice: natural 20s / 1s and damage rolls by a PC
-    if (S[speaker] && !m.flags?.[MODULE_ID]?.combatRecap) {
+    // Enemies taken to 0 HP (for the defeated count; kills come from the extractor)
+    const undo = m.flags?.["midi-qol"]?.undoDamage;
+    if (Array.isArray(undo)) {
+      for (const u of undo) {
+        const before = Number(u?.oldHP), after = Number(u?.newHP);
+        if (!(before > 0) || !(after <= 0) || ids.has(u?.actorId)) continue;
+        downed.add(u.actorUuid ?? u.targetUuid ?? `${u.actorId}:${ts}`);
+      }
+    }
+    // Dice: natural 20s / 1s rolled by a PC
+    if (S[speaker] && !m.flags?.[MODULE_ID]?.combatRecap && !m.flags?.[MODULE_ID]?.abilityUse?.reverted) {
       for (const r of m.rolls || []) {
         const roll = asRollData(r);
-        if (!roll) continue;
-        if (isDamageRoll(roll)) {
-          const t = Math.max(0, Math.floor(Number(roll.total) || 0));
-          S[speaker].rolledDamage += t;
-          S[speaker].biggestHit = Math.max(S[speaker].biggestHit, t);
-        } else {
+        if (!roll || isDamageRoll(roll)) continue;
+        {
           const nat = d20Results(roll);
           if (nat === 20) S[speaker].nat20++;
           if (nat === 1) S[speaker].nat1++;
@@ -92,31 +81,14 @@ export function computeRecap({ messages = [], pcs = [], enemies = [], midiStart 
         case "save": o.success ? s.savesPassed++ : s.savesFailed++; break;
         case "save_fix": { const moved = Math.min(v, s.savesFailed); s.savesFailed -= moved; s.savesPassed += moved; break; }
         case "death": s.deathSaves++; break;
-        case "heal": s.healing += v; break;           // "+" button heals (midi-qol counts the rest)
+        case "heal": case "healing": s.healing += v; break;
         case "damage": s.damage += v; s.biggestHit = Math.max(s.biggestHit, v); break;
-        case "kill": s.kills += v || 1; break;
+        case "kill": s.kills += 1; break;
         case "damage_taken": s.taken += v; break;
         case "crit": s.crits += v; break;
         case "fumble": s.fumbles += v; break;
         case "max_hit": s.biggestHit = Math.max(s.biggestHit, v); break;
       }
-    }
-  }
-
-  // midi-qol's counters for the fight (end − start); otherwise the damage rolls
-  for (const s of Object.values(S)) {
-    const a = midiStart[s.id], b = midiEnd[s.id];
-    if (a && b) {
-      const d = (k) => Math.max(0, (b[k] || 0) - (a[k] || 0));
-      s.midi = true;
-      s.damage += d("damageTotal");
-      s.taken += d("damageTaken");
-      s.healing += d("healingDone");
-      s.kills += d("kills");
-      s.crits += d("numAttackCritical");
-      s.fumbles += d("numAttackFumble");
-    } else {
-      s.damage += s.rolledDamage;
     }
   }
 
@@ -128,7 +100,13 @@ export function computeRecap({ messages = [], pcs = [], enemies = [], midiStart 
   return {
     scene, rounds, start, end,
     minutes: Number.isFinite(start) && Number.isFinite(end) ? Math.max(1, Math.round((end - start) / 60000)) : null,
-    enemies: { total: enemies.length, defeated: enemies.filter(e => e.defeated).length, names: enemies.filter(e => e.defeated).map(e => e.name) },
+    enemies: (() => {
+      // The tracker may have lost defeated combatants (removed as they fell), so
+      // also count the creatures the chat log shows being taken to 0 HP
+      const onTracker = enemies.filter(e => e.defeated).length, standing = enemies.filter(e => !e.defeated).length;
+      const defeated = Math.max(onTracker, downed.size);
+      return { total: defeated + standing, defeated, names: enemies.filter(e => e.defeated).map(e => e.name) };
+    })(),
     mvp: mvp && (mvp.damage > 0 || mvp.kills > 0 || mvp.healing > 0) ? mvp.id : null,
     party: {
       damage: list.reduce((t, s) => t + s.damage, 0),
@@ -182,7 +160,7 @@ function awardAchievements(list) {
     if (attacks >= 3 && s.hits === 0) give(s, "stormtrooper");
     if (saves >= 2 && s.savesFailed === 0) give(s, "ironWill");
     if (s.deathSaves > 0) give(s, "closeCall");
-    if (s.midi && s.taken === 0 && (attacks > 0 || s.damage > 0 || s.healing > 0)) give(s, "untouchable");
+    if (s.taken === 0 && (attacks > 0 || s.damage > 0 || s.healing > 0)) give(s, "untouchable");
     if (attacks === 0 && s.damage === 0 && (s.healing > 0 || saves > 0)) give(s, "pacifist");
   }
   return out;

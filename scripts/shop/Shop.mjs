@@ -18,7 +18,7 @@
  * The GM's client does every purchase and sale, one at a time: checks stock
  * and coin, moves items and money, updates stock and posts a receipt card.
  */
-import { MODULE_ID, escapeHtml } from "../abilities/shared.mjs";
+import { MODULE_ID, escapeHtml, assertOwns } from "../abilities/shared.mjs";
 import { registerGmAction, runAsGM, castersForUser } from "../QuickActions.mjs";
 import { COIN_CP, DENOMS, toCp, walletCp, formatCp, pay, receive } from "./currency.mjs";
 import { rollPersuasion, sendOffer, answerCounter, cancelOffer, configureHaggle, handleHaggleSocket } from "./haggle.mjs";
@@ -77,6 +77,7 @@ export function registerShop() {
       if (offer.kind === "sell") {
         return gmSellInTurn({ shopId: offer.shopId, actorId: offer.actorId, lines: lines.map(l => ({ itemId: l.key, qty: l.qty, unitCp: l.dealCp })) }, user);
       }
+      assertOwns(game.actors.get(offer.actorId), user);   // only for a character the player owns
       const forActor = ((deals[offer.shopId] ??= {})[offer.actorId] ??= {});
       for (const l of lines) forActor[l.key] = l.dealCp;
       return {};

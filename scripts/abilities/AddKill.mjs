@@ -25,7 +25,7 @@ function renderPanel(dialog, { actor, close, back }) {
       await ChatMessage.create({
         speaker: ChatMessage.getSpeaker({ actor }),
         content: await statCard({ icon: "fas fa-skull", title: "Kill", subtitle: actor.name, summary: "Added manually for stats" }),
-        flags: { [MODULE_ID]: { abilityUse: { ability: "add-kill", actorId: actor.id, kill: true } } },
+        flags: { [MODULE_ID]: { abilityUse: { ability: "add-kill", actorId: actor.id, kill: true, undo: [] } } },
       });
       ui.notifications.info(`Kill recorded for ${actor.name}.`);
       close();

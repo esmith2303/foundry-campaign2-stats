@@ -2,8 +2,9 @@ import { extractAll } from "./extract.mjs";
 
 /**
  * StatsCollector
- * - snapshot(): midi-qol's own per-actor stats (damage, kills, items…)
- * - chatEvents(): dice / attacks / saves / checks / heals, read from the chat log
+ * - session(): the marker that ends a stats session (time + world)
+ * - chatEvents(): every stat — dice, attacks, damage, kills, healing, saves…
+ *   read from the chat log (midi-qol's own counters aren't used)
  */
 export class StatsCollector {
   #moduleId;
@@ -12,36 +13,8 @@ export class StatsCollector {
     this.#moduleId = moduleId;
   }
 
-  async snapshot() {
-    // Force midi-qol to persist its in-memory state
-    try {
-      if (globalThis.MidiQOL?.gameStats?.saveStats) {
-        await MidiQOL.gameStats.saveStats();
-      }
-    } catch (e) {
-      console.warn(`${this.#moduleId} | Could not force midi-qol saveStats:`, e);
-    }
-
-    // Live in-memory state first, fall back to settings
-    let stats = globalThis.MidiQOL?.gameStats?.currentStats ?? null;
-    if (!stats || Object.keys(stats).length === 0) {
-      try { stats = game.settings.get("midi-qol", "RollStats"); } catch {}
-    }
-    stats = stats || {};
-
-    // Filter out user-level entries
-    const filteredStats = {};
-    for (const [id, data] of Object.entries(stats)) {
-      if (game.users?.get(id)) continue;
-      filteredStats[id] = data;
-    }
-
-    return {
-      timestamp: new Date().toISOString(),
-      worldId: game.world.id,
-      worldName: game.world.title,
-      stats: filteredStats,
-    };
+  session() {
+    return { timestamp: new Date().toISOString(), worldId: game.world.id, worldName: game.world.title };
   }
 
   /** Every message in the chat log, run through the shared extractor. */
@@ -49,6 +22,12 @@ export class StatsCollector {
     const ctx = {
       isPlayerCharacter: (id) => !!game.actors.get(id)?.hasPlayerOwner,
       actorName: (id, fallback) => game.actors.get(id)?.name ?? fallback,
+      // "+" entries and receipts only count when posted by the character's owner or a GM
+      canUserAct: (userId, actorId) => {
+        const user = game.users.get(userId), actor = game.actors.get(actorId);
+        if (!user || !actor) return true;   // can't check (deleted user/actor): keep it
+        return user.isGM || actor.testUserPermission(user, "OWNER");
+      },
       // Token UUIDs without an "Actor." part (unlinked tokens)
       resolveActorId: (uuid) => {
         try { const doc = fromUuidSync(uuid); return doc?.actor?.id ?? (doc?.documentName === "Actor" ? doc.id : null); }
@@ -58,9 +37,4 @@ export class StatsCollector {
     return extractAll(game.messages.contents.map(m => m.toObject()), ctx);
   }
 
-  // Count of actors with midi-qol stats this session
-  get pendingCount() {
-    const stats = globalThis.MidiQOL?.gameStats?.currentStats ?? {};
-    return Object.keys(stats).filter(id => !game.users?.get(id)).length;
-  }
 }

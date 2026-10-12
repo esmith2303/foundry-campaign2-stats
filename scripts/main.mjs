@@ -6,6 +6,7 @@ import { registerQuickActions, quickActionsTool, openQuickActions, QUICK_ACTIONS
 import { registerShop, shopTool, openShopManager, SHOP_TOOL } from "./shop/Shop.mjs";
 import { addWindowControls } from "./windowControls.mjs";
 import { registerCombatRecap } from "./recap/CombatRecap.mjs";
+import { partyCharacters } from "./abilities/shared.mjs";
 
 const MODULE_ID = "dnd-group-campaign-2-stats";
 
@@ -38,7 +39,8 @@ function loadStyles() {
 
 Hooks.once("ready", async () => {
   if (!game.modules.get("midi-qol")?.active) {
-    ui.notifications.error("Midi-QOL Stats Uploader requires midi-qol to be active.");
+    // Still needed: hit/miss and the "HP Updated" damage cards come from midi-qol
+    ui.notifications.error("The Campaign Two stats module requires midi-qol to be active.");
     return;
   }
   game.modules.get(MODULE_ID).collector = new StatsCollector(MODULE_ID);
@@ -72,7 +74,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
   tokenControls.tools[SHOP_TOOL] = shopTool();
   tokenControls.tools["midi-qol-upload"] = {
     name: "midi-qol-upload",
-    title: "Upload Midi-QOL Stats",
+    title: "Upload Stats",
     icon: "fas fa-cloud-upload-alt",
     button: true,
     onChange: () => {},
@@ -118,22 +120,21 @@ Hooks.on("renderSceneControls", () => {
     const collector = mod?.collector;
     const uploader = mod?.uploader;
     if (!collector || !uploader) {
-      ui.notifications.error("Midi-QOL Stats Uploader is not initialised.");
+      ui.notifications.error("The stats uploader is not initialised.");
       return;
     }
     const apiUrl = game.settings.get(MODULE_ID, "apiUrl") || "(not configured)";
     const now = new Date().toLocaleString();
-    const actorCount = collector.pendingCount;
     const messageCount = game.messages?.size ?? 0;
 
     new Dialog({
-      title: "Upload Midi-QOL Stats",
+      title: "Upload Stats",
       content: `
         <div class="stats-uploader-dialog">
-          <p>Upload session stats for <strong>${actorCount}</strong> actor(s).</p>
+          <p>Upload this session's stats and start a new session.</p>
           <p><strong>Time:</strong> ${now}</p>
           <p><strong>Endpoint:</strong> <code>${apiUrl}</code></p>
-          <p><strong>Chat log:</strong> ${messageCount} message(s) — dice, attacks, saves and heals are read from these</p>
+          <p><strong>Chat log:</strong> ${messageCount} message(s) — every stat is read from these, so upload before clearing the chat</p>
         </div>
       `,
       buttons: {
@@ -141,7 +142,7 @@ Hooks.on("renderSceneControls", () => {
         settings: { icon: '<i class="fas fa-cog"></i>', label: "Settings", callback: () => game.settings.sheet.render(true) },
         cancel: { icon: '<i class="fas fa-times"></i>', label: "Cancel" },
       },
-      default: (actorCount > 0 || messageCount > 0) ? "upload" : "settings",
+      default: messageCount > 0 ? "upload" : "settings",
     }).render(true);
   });
 
@@ -166,9 +167,7 @@ function showSkillsSheet(anchorBtn) {
     return;
   }
 
-  const characters = game.actors.contents
-    .filter(a => a.hasPlayerOwner && (a.type === "character" || a.type === "npc"))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const characters = partyCharacters();   // the players' assigned characters
 
   if (!characters.length) {
     ui.notifications.warn("No player-owned characters found.");

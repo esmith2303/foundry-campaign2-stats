@@ -10,7 +10,7 @@
  *   - spends the pool on the item,
  *   - posts a chat card, which the stats extractor counts as a heal.
  */
-import { MODULE_ID, escapeHtml, partyCharacters, hpOf, statCard } from "./shared.mjs";
+import { MODULE_ID, escapeHtml, partyCharacters, hpOf, statCard, assertOwns, assertPartyTarget } from "./shared.mjs";
 
 const ID = "lay-on-hands";
 const APPLY = "lay-on-hands.apply";
@@ -45,8 +45,7 @@ async function spend(item, amount) {
 
 async function gmApply({ actorId, itemId, targets } = {}, user) {
   const actor = game.actors.get(actorId);
-  if (!actor) throw new Error("Character not found.");
-  if (!user?.isGM && !actor.testUserPermission(user, "OWNER")) throw new Error("You don't own that character.");
+  assertOwns(actor, user);
   const item = actor.items.get(itemId);
   if (!item || !isLayOnHands(item)) throw new Error("Lay on Hands not found on that character.");
 
@@ -59,7 +58,7 @@ async function gmApply({ actorId, itemId, targets } = {}, user) {
   const results = wanted.map(t => {
     if (!t.actorId) return { actorId: null, name: t.name || "Other", requested: t.amount, applied: t.amount };
     const target = game.actors.get(t.actorId);
-    if (!target) throw new Error("A selected character no longer exists.");
+    assertPartyTarget(target, user);
     const hp = hpOf(target);
     const applied = Math.min(t.amount, hp.missing);
     return { actorId: target.id, name: target.name, requested: t.amount, applied, hpBefore: hp.value, hpAfter: hp.value + applied, hpMax: hp.max, _actor: target };
@@ -84,6 +83,8 @@ async function gmApply({ actorId, itemId, targets } = {}, user) {
     flags: { [MODULE_ID]: { abilityUse: {
       ability: ID, itemName: item.name, actorId: actor.id,
       healing: total, poolBefore: before, poolAfter: after, poolMax: max, targets: clean,
+      undo: [{ kind: "pool", actorId: actor.id, itemId: item.id, amount: total },
+             ...clean.filter(r => r.actorId && r.applied > 0).map(r => ({ kind: "hp", actorId: r.actorId, value: r.applied }))],
     } } },
   });
 
