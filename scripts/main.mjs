@@ -7,6 +7,7 @@ import { registerShop, shopTool, openShopManager, SHOP_TOOL } from "./shop/Shop.
 import { addWindowControls } from "./windowControls.mjs";
 import { registerCombatRecap } from "./recap/CombatRecap.mjs";
 import { registerCasino, casinoTool, openCasino, CASINO_TOOL } from "./casino/Casino.mjs";
+import { registerAchievements } from "./achievements/Achievements.mjs";
 import { partyCharacters } from "./abilities/shared.mjs";
 
 const MODULE_ID = "dnd-group-campaign-2-stats";
@@ -28,7 +29,7 @@ Hooks.once("init", () => {
 // them. Adding ours the same way keeps every popup styled as intended.
 function loadStyles() {
   const version = game.modules.get(MODULE_ID)?.version ?? "";
-  for (const file of ["styles/quick-actions.css", "styles/shop.css", "styles/recap.css", "styles/casino.css"]) {
+  for (const file of ["styles/quick-actions.css", "styles/shop.css", "styles/recap.css", "styles/casino.css", "styles/achievements.css"]) {
     if (document.querySelector(`link[data-qa-style="${file}"]`)) continue;
     const link = document.createElement("link");
     link.rel = "stylesheet";
@@ -51,6 +52,7 @@ Hooks.once("ready", async () => {
   registerShop();
   registerCombatRecap();
   registerCasino();
+  registerAchievements();
 
   // Clear the old live-tracking store; nothing reads it any more
   if (game.user.isGM) {

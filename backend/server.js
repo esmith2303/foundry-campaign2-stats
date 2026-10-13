@@ -729,6 +729,54 @@ app.get("/api/casino-stats", authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Achievements (the GM's Foundry client asks for this): each character's
+// lifetime totals in one world, up to that world's latest upload. The module
+// adds anything in the chat log after that, so nothing counts twice.
+app.get("/api/achievement-baseline", authMiddleware, async (req, res) => {
+  const worldId = req.query.worldId;
+  if (!worldId) return res.status(400).json({ error: "worldId is required" });
+  try {
+    const uploads = (await db("stat_uploads").select("uploaded_at").where("world_id", worldId).orderBy("uploaded_at"))
+      .map(r => new Date(r.uploaded_at).getTime());
+    // Only count what's no longer in the caller's chat log (`before` = its oldest
+    // message); the module reads the rest itself with the current extractor.
+    const before = Number(req.query.before) || null;
+    let cutoff = uploads.length ? uploads[uploads.length - 1] : null;
+    if (cutoff && before) cutoff = Math.min(cutoff, before - 1);
+    const actors = {};
+    if (cutoff) {
+      const until = new Date(cutoff);
+      const [types, shop] = await Promise.all([
+        db("chat_outcomes").select("actor_id", "outcome_type").count("* as n").sum("amount as sum").max("amount as max")
+          .where("world_id", worldId).where("occurred_at", "<=", until).groupBy("actor_id", "outcome_type"),
+        db("chat_purchases").select("actor_id",
+            db.raw("SUM(CASE WHEN kind = 'buy' THEN total_cp ELSE 0 END) as spent_cp"),
+            db.raw("SUM(CASE WHEN kind = 'buy' THEN qty ELSE 0 END) as items"),
+            db.raw("SUM(CASE WHEN kind = 'buy' AND list_cp IS NOT NULL AND unit_cp < list_cp THEN 1 ELSE 0 END) as haggles"))
+          .where("world_id", worldId).where("occurred_at", "<=", until).groupBy("actor_id"),
+      ]);
+      const get = (id) => (actors[id] ??= { types: {}, shop: { spentCp: 0, items: 0, haggles: 0 } });
+      for (const r of types) get(r.actor_id).types[r.outcome_type] = { n: Number(r.n) || 0, sum: Number(r.sum) || 0, max: Number(r.max) || 0 };
+      for (const r of shop) get(r.actor_id).shop = { spentCp: Number(r.spent_cp) || 0, items: Number(r.items) || 0, haggles: Number(r.haggles) || 0 };
+    }
+    res.json({ cutoff, uploads, actors });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Trophy cabinet for the dashboard: every achievement card that's been uploaded
+app.get("/api/achievements", authMiddleware, async (req, res) => {
+  try {
+    let q = db("chat_outcomes").select("actor_name", "detail as id", "item_name as name")
+      .max("amount as tier").min("occurred_at as first_at").max("occurred_at as last_at")
+      .where("outcome_type", "achievement").groupBy("actor_name", "detail", "item_name");
+    q = applyRange(q, await sessionRange(req.query.session));
+    q = applyExcludes(q, req.query.exclude, req.query.excludeWorlds);
+    const rows = (await q).map(r => ({ ...r, tier: Number(r.tier) || 0 }));
+    rows.sort((a, b) => new Date(b.last_at) - new Date(a.last_at));
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get("/api/dice-types", authMiddleware, async (req, res) => {
   const session = req.query.session;
   const excludeWorlds = req.query.excludeWorlds;

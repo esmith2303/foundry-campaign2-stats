@@ -27,6 +27,17 @@ export function registerSettings(moduleId) {
   });
 
   // Shops built by the GM (Shop button). { [shopId]: { id, title, items: [...] } }
+  game.settings.register(moduleId, "achievements", {
+    name: "Achievements",
+    hint: "Award long-term achievements (natural 20s, kills, healing, the casino…) with a chat card when a character earns one.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+  // What's been awarded so far (so nothing is announced twice)
+  game.settings.register(moduleId, "achievementStore", { scope: "world", config: false, type: Object, default: {} });
+
   game.settings.register(moduleId, "casinoName", {
     name: "Casino name",
     hint: "Shown on the casino's sign and its chat receipts.",

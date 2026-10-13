@@ -255,6 +255,39 @@ the dashboard.
 | Close Call | made a death save |
 | Pacifist | no attacks or damage, but healed or saved |
 
+## Long-term achievements
+
+Campaign-long achievements, separate from the per-fight recap ones. When a
+character earns one (or the next tier of one), a card is posted to chat with
+the character as speaker. The primary GM's client keeps score, a couple of
+seconds after each chat message, so the GM needs to be logged in. Turn it off
+in the module settings ("Achievements"). The dashboard shows them in a
+**Trophy Cabinet** section (or "Achievements This Session").
+
+- **Lifetime totals** = this world's chat log + the stats server's totals for
+  anything older than it, so clearing the chat loses nothing. If the server
+  can't be reached, only the chat log is counted (nothing already awarded is
+  lost).
+- **Streaks and moments** (two 20s in a row, five misses in a row…) are found
+  in the chat log in order.
+- What's been awarded is saved in the world (hidden setting
+  `achievementStore`), so nothing is announced twice. The very first run posts
+  one "Trophy cabinet" card per character with everything already earned.
+- **Death saves stay secret.** Natural 20s / 1s on death saves don't count
+  towards Tymora / Cursed Bones, and the Death Dodger card is whispered to the
+  GM and that character's player only. When the party finds out, the GM can
+  press **Show to everyone** on the card to make it public. (It still shows
+  in the dashboard's Trophy Cabinet.)
+- Casino moments (blackjacks, split wins, single numbers, lizards) count for
+  rounds played on 1.9.0 or later.
+
+- **Nothing is listed until someone earns it.** Players only ever see
+  achievements on unlock cards and in the dashboard's Trophy Cabinet, so one
+  nobody has earned stays unknown. That's why they aren't listed in this
+  README.
+
+Names, wording and thresholds live in `scripts/achievements/catalog.mjs`.
+
 ## Backfilling / correcting from a chat export
 
 ```bash

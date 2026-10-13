@@ -68,6 +68,42 @@ export function keptD20(rollLike) {
   return null;
 }
 
+/**
+ * Every kept d20 a character rolled in a message: [{ actorId, value, death }].
+ * Reads the same places as the dice counts (the message's rolls, Monk's
+ * TokenBar entries, our skill-check cards). Undone "+" cards and recap cards
+ * count for nothing.
+ */
+export function keptD20s(message) {
+  const flags = message?.flags || {};
+  const own = flags[MODULE_ID] || {};
+  if (own.abilityUse?.reverted || own.combatRecap || own.achievement) return [];
+  const out = [];
+  const isD20 = (r) => r?.class === "D20Roll" || r?.terms?.[0]?.faces === 20;
+  const monks = flags["monks-tokenbar"] || {};
+  const entries = monks.requests ? Object.entries(monks).filter(([k, v]) => k.startsWith("token") && v?.actorid) : [];
+  if (entries.length) {
+    for (const [, e] of entries) {
+      const v = keptD20(e.roll);
+      if (v) out.push({ actorId: e.actorid, value: v, death: false });
+    }
+  } else if (own.skillCheck) {
+    for (const [actorId, r] of Object.entries(own.skillCheck.rolls || {})) {
+      const v = r?.breakdown?.d20Result;
+      if (v) out.push({ actorId, value: v, death: false });
+    }
+  } else if (message.speaker?.actor) {
+    const death = flags.dnd5e?.roll?.type === "death" || flags.dnd5e?.roll?.type === "deathsave";
+    for (const r of message.rolls || []) {
+      const roll = asRollData(r);
+      if (!isD20(roll)) continue;
+      const v = keptD20(roll);
+      if (v) out.push({ actorId: message.speaker.actor, value: v, death });
+    }
+  }
+  return out;
+}
+
 /** "Actor.abc" / "Scene.x.Token.y.Actor.abc" → "abc" */
 export function actorIdFromUuid(uuid) {
   const m = /(?:^|\.)Actor\.([A-Za-z0-9]{16})/.exec(uuid || "");
@@ -271,22 +307,37 @@ export function extractMessage(message, ctx, itemFor = null) {
       const src = resolve(midi.actorUuid) ?? resolve(u?.calcDamageOptions?.midi?.sourceActorUuid);
       const tgt = u?.actorId ?? resolve(u?.actorUuid);
       const r = readHpEntry(u);
+      const tgtParty = !!tgt && ctx.isPlayerCharacter(tgt);
+      // A hit on a party member that did nothing because of resistance/immunity (not a save)
+      if (tgtParty && !r.kind && !u?.saved && !u?.superSaver && Number(u?.rawTotalDamage ?? 0) > 0
+          && !(u?.damageDetail ?? []).every(d => ["healing", "temphp"].includes(d?.type))) {
+        addOutcome(tgt, "shrugged", true, `hp${i}`, null, 1);
+      }
       if (!r.kind || r.kind === "temp") return;
       const item = src ? itemFor?.(src) ?? null : null;
       if (r.kind === "heal") {
         if (src) addOutcome(src, "healing", true, `hp${i}`, null, r.amount, { item });
         return;
       }
-      if (tgt && ctx.isPlayerCharacter(tgt)) {
+      if (tgtParty) {
         r.byType.forEach(([type, amt], j) => addOutcome(tgt, "damage_taken", true, `hp${i}t${j}`, null, amt, { detail: type }));
+        if (src && src !== tgt && ctx.isPlayerCharacter(src)) addOutcome(src, "friendly_fire", true, `hp${i}`, null, r.amount);
         return;
       }
       if (!src) return;
       r.byType.forEach(([type, amt], j) => addOutcome(src, "damage", true, `hp${i}d${j}`, null, amt, { detail: type, item }));
       addOutcome(src, "max_hit", true, `hp${i}`, null, r.amount, { item });
       if (r.killed) addOutcome(src, "kill", true, `hp${i}`, null, 1, { item });
+      if (r.oldHP > 0 && r.oldHP <= 5 && r.amount >= 25) addOutcome(src, "overkill", true, `hp${i}`, null, r.amount, { item });
     });
   }
+
+  // ── Natural 20s and 1s (kept d20s; death saves left out — they're secret) ──
+  keptD20s(message).forEach((d, i) => {
+    if (d.death) return;
+    if (d.value === 20) addOutcome(d.actorId, "nat20", true, `n${i}`, message.speaker?.alias, 1);
+    if (d.value === 1) addOutcome(d.actorId, "nat1", true, `n${i}`, message.speaker?.alias, 1);
+  });
 
   // ── Saves made by the TARGETS of a card ────────────────────────────────────
   // midi records each target's save on the caster's card (often a monster's),
@@ -387,6 +438,45 @@ export function extractMessage(message, ctx, itemFor = null) {
       addOutcome(l.actorId, "wager", true, `c${i}`, null, stake, extra);
       addOutcome(l.actorId, "gamble", back > stake, `c${i}`, null, back - stake, extra);
     });
+  }
+
+  // Casino moments for achievements (receipts from 1.9.0 on carry these)
+  if (casino && Array.isArray(casino.lines) && allowed(casino.lines[0]?.actorId)) {
+    casino.lines.forEach((l, i) => {
+      const m = l?.moments ?? {};
+      if (m.naturals > 0) addOutcome(l.actorId, "bj_natural", true, `c${i}`, null, m.naturals);
+      if (m.splitBoth) addOutcome(l.actorId, "bj_split_both", true, `c${i}`, null, 1);
+      if (m.straight) addOutcome(l.actorId, "rl_straight", true, `c${i}`, null, 1);
+      if (m.lizardWin) addOutcome(l.actorId, "lz_win", true, `c${i}`, null, 1);
+      if (m.longShot) addOutcome(l.actorId, "lz_longshot", true, `c${i}`, null, 1);
+    });
+  }
+  // End of a casino night: who finished up
+  const night = flags[MODULE_ID]?.casinoNight;
+  if (night?.nets && allowed(Object.keys(night.nets)[0])) {
+    Object.entries(night.nets).forEach(([actorId, net], i) => { if (Number(net) > 0) addOutcome(actorId, "casino_up", true, `night${i}`, null, Number(net)); });
+  }
+  // Combat recap cards: MVP, Executioner, untouched fights, glass cannons
+  const recap = flags[MODULE_ID]?.combatRecap;
+  if (recap && Array.isArray(recap.pcs)) {
+    const pcs = recap.pcs;
+    const leader = (get) => {
+      const sorted = [...pcs].sort((a, b) => (get(b) || 0) - (get(a) || 0));
+      return sorted[0] && (get(sorted[0]) || 0) > 0 && !(sorted[1] && get(sorted[1]) === get(sorted[0])) ? sorted[0].id : null;
+    };
+    const topDamage = leader(p => p.damage), topTaken = leader(p => p.taken);
+    for (const p of pcs) {
+      if (recap.mvp === p.id) addOutcome(p.id, "recap_mvp", true, "recap", p.name, 1);
+      if ((p.achievements ?? []).includes("executioner")) addOutcome(p.id, "recap_exec", true, "recap", p.name, 1);
+      const engaged = (p.hits || 0) + (p.misses || 0) > 0 || (p.damage || 0) > 0 || (p.healing || 0) > 0;
+      if (engaged && (p.taken || 0) === 0) addOutcome(p.id, "recap_untouched", true, "recap", p.name, 1);
+      if (topDamage === p.id && topTaken === p.id) addOutcome(p.id, "recap_glass", true, "recap", p.name, 1);
+    }
+  }
+  // Achievement cards themselves (for the dashboard's trophy cabinet)
+  const ach = flags[MODULE_ID]?.achievement;
+  if (ach?.actorId && Array.isArray(ach.unlocks)) {
+    ach.unlocks.forEach((u, i) => addOutcome(ach.actorId, "achievement", true, `a${i}`, null, Number(u.tier) || 0, { detail: String(u.id).slice(0, 60), item: u.name ?? null }));
   }
 
   // ── Shop receipts: purchases and sales (one row per item line, prices in copper)

@@ -19,22 +19,25 @@ export class StatsCollector {
 
   /** Every message in the chat log, run through the shared extractor. */
   chatEvents() {
-    const ctx = {
-      isPlayerCharacter: (id) => !!game.actors.get(id)?.hasPlayerOwner,
-      actorName: (id, fallback) => game.actors.get(id)?.name ?? fallback,
-      // "+" entries and receipts only count when posted by the character's owner or a GM
-      canUserAct: (userId, actorId) => {
-        const user = game.users.get(userId), actor = game.actors.get(actorId);
-        if (!user || !actor) return true;   // can't check (deleted user/actor): keep it
-        return user.isGM || actor.testUserPermission(user, "OWNER");
-      },
-      // Token UUIDs without an "Actor." part (unlinked tokens)
-      resolveActorId: (uuid) => {
-        try { const doc = fromUuidSync(uuid); return doc?.actor?.id ?? (doc?.documentName === "Actor" ? doc.id : null); }
-        catch { return null; }
-      },
-    };
-    return extractAll(game.messages.contents.map(m => m.toObject()), ctx);
+    return extractAll(game.messages.contents.map(m => m.toObject()), chatContext());
   }
+}
 
+/** What the extractor needs to know about this world (also used by the achievements). */
+export function chatContext() {
+  return {
+    isPlayerCharacter: (id) => !!game.actors.get(id)?.hasPlayerOwner,
+    actorName: (id, fallback) => game.actors.get(id)?.name ?? fallback,
+    // "+" entries and receipts only count when posted by the character's owner or a GM
+    canUserAct: (userId, actorId) => {
+      const user = game.users.get(userId), actor = game.actors.get(actorId);
+      if (!user || !actor) return true;   // can't check (deleted user/actor): keep it
+      return user.isGM || actor.testUserPermission(user, "OWNER");
+    },
+    // Token UUIDs without an "Actor." part (unlinked tokens)
+    resolveActorId: (uuid) => {
+      try { const doc = fromUuidSync(uuid); return doc?.actor?.id ?? (doc?.documentName === "Actor" ? doc.id : null); }
+      catch { return null; }
+    },
+  };
 }

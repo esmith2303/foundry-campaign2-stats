@@ -44,6 +44,10 @@ export class StatsUploader {
     const apiUrl = game.settings.get(this.#moduleId, "apiUrl");
     if (!apiUrl) return ui.notifications.error("Stats: no API URL configured.");
 
+    // The session ends now: stamp it before reading the chat, so anything posted
+    // while uploading lands in the next session (achievements rely on this)
+    const marker = collector.session();
+
     // 1. Chat-log events
     const results = collector.chatEvents();
     ui.notifications.info(`Stats: uploading rolls from ${results.length} chat message(s)…`);
@@ -61,10 +65,11 @@ export class StatsUploader {
     }
 
     // 2. End the session
-    const result = await this.upload({ ...collector.session(), stats: {} });
+    const result = await this.upload({ ...marker, stats: {} });
     if (!result.success) {
       return ui.notifications.error(`Stats: rolls uploaded, but the session couldn't be closed — ${result.error}. Try again.`);
     }
     ui.notifications.info(`Stats: ✔ uploaded ${results.length} chat message(s); new session started.`);
+    Hooks.callAll(`${this.#moduleId}.uploaded`);
   }
 }

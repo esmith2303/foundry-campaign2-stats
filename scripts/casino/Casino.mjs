@@ -199,7 +199,7 @@ async function gmAct(p = {}, user) {
 function openNight() {
   clearTimers();
   S = { open: true, v: 0, name: casinoName(), maxBetCp: maxBetCp(), phase: "lobby", picks: {}, queue: [], qi: 0, purses: {}, table: null,
-        shoes: {}, history: [], form: null };
+        shoes: {}, history: [], form: null, nightId: foundry.utils.randomID(), nightNets: {} };
   notePurses(partyCharacters().map(a => a.id));
   broadcast();
 }
@@ -207,6 +207,7 @@ function openNight() {
 async function closeNight() {
   clearTimers();
   await refundTable();
+  await postNightTally();
   S.open = false;
   broadcast();
   S = null;
@@ -496,7 +497,11 @@ async function settleBlackjack(t) {
       words.push(`insurance ${dealerBJ ? "paid" : "lost"}`);
     }
     await give(id, ret);
-    lines.push({ actorId: id, stakeCp: stake, returnCp: ret, detail: words.join("; ") });
+    const split = s.hands.length > 1;
+    lines.push({ actorId: id, stakeCp: stake, returnCp: ret, detail: words.join("; "), moments: {
+      naturals: s.hands.filter(h => h.result === "blackjack").length,
+      splitBoth: split && s.hands.every(h => h.result === "win" || h.result === "blackjack"),
+    } });
   }
   t.phase = "done";
   t.dealerTotal = R.handTotal(dealerCodes).total;
@@ -540,7 +545,8 @@ async function settleRoulette(t) {
     for (const b of s.bets) { stake += b.cp; b.returnCp = R.rouletteReturn(b, n); ret += b.returnCp; }
     await give(id, ret);
     const won = s.bets.filter(b => b.returnCp > 0).map(b => R.rouletteLabel(b));
-    lines.push({ actorId: id, stakeCp: stake, returnCp: ret, detail: won.length ? `won on ${won.join(", ")}` : "no luck" });
+    lines.push({ actorId: id, stakeCp: stake, returnCp: ret, detail: won.length ? `won on ${won.join(", ")}` : "no luck",
+                 moments: { straight: s.bets.some(b => b.type === "n" && b.returnCp > 0) } });
   }
   t.phase = "done";
   t.results = { lines, number: n, colour: R.colourOf(n) };
@@ -591,7 +597,9 @@ async function settleRace(t) {
     }
     await give(id, ret);
     const names = s.bets.map(b => `${R.lizardById(b.lizard)?.name} (${R.oddsText(t.field.find(L => L.id === b.lizard).odds)})`);
-    lines.push({ actorId: id, stakeCp: stake, returnCp: ret, detail: `backed ${names.join(", ")}` });
+    const winning = s.bets.filter(b => b.lizard === winner).map(b => t.field.find(L => L.id === b.lizard)?.odds ?? [0, 1]);
+    lines.push({ actorId: id, stakeCp: stake, returnCp: ret, detail: `backed ${names.join(", ")}`,
+                 moments: { lizardWin: winning.length > 0, longShot: winning.some(([a, b]) => a / b >= 8) } });
   }
   S.form = R.recordForm(S.form ?? {}, t.race.order);
   try { await game.settings.set(MODULE_ID, "casinoLizards", { form: S.form }); } catch {}
@@ -605,9 +613,37 @@ async function settleRace(t) {
 
 const signedCp = (cp) => `${cp > 0 ? "+" : cp < 0 ? "−" : "±"}${formatCp(Math.abs(cp))}`;
 
+/** Closing time: a card with how everyone did tonight (feeds "Beat the House"). */
+async function postNightTally() {
+  const nets = S?.nightNets ?? {};
+  const ids = Object.keys(nets);
+  if (!ids.length) return;
+  const rows = ids.sort((a, b) => nets[b] - nets[a]).map(id => `
+      <li class="qa-roll-row"><div class="qa-receipt-head">
+        <span class="qa-roll-name">${escapeHtml(game.actors.get(id)?.name ?? "Someone")}</span>
+        <span class="qa-receipt-amt ${nets[id] > 0 ? "success" : nets[id] < 0 ? "failure" : ""}">${signedCp(nets[id])}</span>
+      </div></li>`).join("");
+  const house = -ids.reduce((a, id) => a + nets[id], 0);
+  await ChatMessage.create({
+    speaker: { alias: S.name },
+    content: `
+      <div class="skill-check-card qa-card cz-receipt">
+        <header class="card-header">
+          <span class="icon"><i class="fas fa-door-closed"></i></span>
+          <div class="title-block"><div class="skill-name">${escapeHtml(S.name)}</div><div class="ability-tag">Closing time — tonight's takings</div></div>
+        </header>
+        <section class="card-content"><ul class="qa-rows">${rows}</ul>
+          <div class="group-summary">The house ${house >= 0 ? "is up" : "is down"} ${formatCp(Math.abs(house))} on the night</div></section>
+      </div>`,
+    flags: { [MODULE_ID]: { casinoNight: { id: S.nightId, casino: S.name, nets } } },
+  });
+}
+
 async function postReceipt(t, headline) {
   const lines = t.results?.lines ?? [];
   if (!lines.length) return;
+  S.nightNets ??= {};
+  for (const l of lines) S.nightNets[l.actorId] = (S.nightNets[l.actorId] ?? 0) + l.returnCp - l.stakeCp;
   const rows = lines.map(l => {
     const name = game.actors.get(l.actorId)?.name ?? "Someone";
     const net = l.returnCp - l.stakeCp;
