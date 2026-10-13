@@ -19,11 +19,15 @@
     "#trophy-section .trophy{display:flex;align-items:center;gap:.6rem;padding:.4rem 0;border-bottom:1px solid var(--border)}" +
     "#trophy-section .trophy:last-child{border-bottom:none}" +
     "#trophy-section .medal{flex:none;width:26px;height:26px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff3c4 0,#e8c65a 35%,#a8832f 100%);box-shadow:0 0 0 1px #0a0a0f,0 0 0 2px var(--gold-dim);display:flex;align-items:center;justify-content:center;font:700 .62rem var(--font-mono);color:#2a1a08}" +
-    "#trophy-section .trophy .tname{flex:1;min-width:0}" +
+    "#trophy-section .trophy .tname{flex:1;min-width:0;display:flex;flex-direction:column;gap:.1rem}" +
+    "#trophy-section .trophy .tdesc{color:#a8a49b;font-size:.85em;font-style:italic;line-height:1.25}" +
+    "#trophy-section .medal svg{width:14px;height:14px;display:block;fill:#2a1a08}" +
     "#trophy-section .trophy .when{font-family:var(--font-mono);font-size:.7rem;color:var(--text-dim);white-space:nowrap}";
   document.head.appendChild(style);
 
   var ROMAN = ["", "I", "II", "III", "IV", "V", "VI"];
+  // A centred star for one-off achievements (a text ★ sits low and small)
+  var STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z"/></svg>';
   // Achievements with tiers (the medal shows the tier reached)
   var TIERED = { tymora: 1, cursed: 1, thousandCuts: 1, humanShield: 1, fieldMedic: 1 };
   function esc(s) {
@@ -72,8 +76,8 @@
       html += '<div class="panel cabinet"><h2>' + esc(n) + "<span>" + by[n].length + " earned</span></h2>";
       by[n].forEach(function (r) {
         var tiered = TIERED[r.id];
-        html += '<div class="trophy"><span class="medal">' + (tiered ? ROMAN[r.tier] || r.tier : "★") + '</span><span class="tname">' + esc(r.name || r.id) +
-          (tiered ? " " + (ROMAN[r.tier] || r.tier) : "") + '</span><span class="when">' + day(r.last_at) + "</span></div>";
+        html += '<div class="trophy"><span class="medal">' + (tiered ? ROMAN[r.tier] || r.tier : STAR) + '</span><span class="tname"><span>' + esc(r.name || r.id) +
+          (tiered ? " " + (ROMAN[r.tier] || r.tier) : "") + "</span>" + (r.desc ? '<span class="tdesc">' + esc(r.desc) + "</span>" : "") + '</span><span class="when">' + day(r.last_at) + "</span></div>";
       });
       html += "</div>";
     });

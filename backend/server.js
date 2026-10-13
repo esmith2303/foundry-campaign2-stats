@@ -763,6 +763,17 @@ app.get("/api/achievement-baseline", authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Achievement descriptions come from the module's own list (only sent for
+// achievements someone has earned, so locked ones stay unknown)
+let achievementCatalog = null;
+async function achievementInfo(id) {
+  if (achievementCatalog === null) {
+    try { achievementCatalog = (await import(new URL("../scripts/achievements/catalog.mjs", import.meta.url))).ACHIEVEMENTS; }
+    catch (err) { console.warn("Achievement descriptions unavailable:", err.message); achievementCatalog = []; }
+  }
+  return achievementCatalog.find(a => a.id === id) ?? null;
+}
+
 // Trophy cabinet for the dashboard: every achievement card that's been uploaded
 app.get("/api/achievements", authMiddleware, async (req, res) => {
   try {
@@ -771,7 +782,13 @@ app.get("/api/achievements", authMiddleware, async (req, res) => {
       .where("outcome_type", "achievement").groupBy("actor_name", "detail", "item_name");
     q = applyRange(q, await sessionRange(req.query.session));
     q = applyExcludes(q, req.query.exclude, req.query.excludeWorlds);
-    const rows = (await q).map(r => ({ ...r, tier: Number(r.tier) || 0 }));
+    const rows = await Promise.all((await q).map(async (r) => {
+      const tier = Number(r.tier) || 0;
+      const a = await achievementInfo(r.id);
+      let desc = null;
+      try { desc = a ? a.desc(a.tiers[Math.max(0, tier - 1)]) : null; } catch { /* leave it blank */ }
+      return { ...r, tier, desc };
+    }));
     rows.sort((a, b) => new Date(b.last_at) - new Date(a.last_at));
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
