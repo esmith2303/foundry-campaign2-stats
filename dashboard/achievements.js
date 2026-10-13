@@ -43,16 +43,23 @@
     if (session !== "all") parts.push("session=" + encodeURIComponent(session));
     if (hiddenNames.length) parts.push("exclude=" + encodeURIComponent(hiddenNames.join(",")));
     if (hiddenWorlds.length) parts.push("excludeWorlds=" + encodeURIComponent(hiddenWorlds.join(",")));
-    var rows;
+    var rows, failed = null;
     try { rows = await apiFetch("/achievements" + (parts.length ? "?" + parts.join("&") : "")); }
-    catch (e) { console.warn("achievements.js: could not load achievements", e); return; }
+    catch (e) { console.warn("achievements.js: could not load achievements", e); failed = e; }
     if (token !== renderToken) return;
 
-    document.getElementById("trophy-section")?.remove();
+    var existing = document.getElementById("trophy-section");
+    if (existing) existing.remove();
     var section = document.createElement("div");
     section.id = "trophy-section";
-    rows = keepPCsOnly(rows);
     var title = '<div class="section-title">' + (session === "all" ? "Trophy Cabinet" : "Achievements This Session") + "</div>";
+    if (failed) {
+      // Most likely the stats server hasn't been restarted since updating (pm2 restart)
+      section.innerHTML = title + '<div class="panel"><div class="no-data">Couldn\'t load achievements (' + esc(failed.message) +
+        "). If that's a 404, the stats server needs restarting with the latest code.</div></div>";
+      return place(section);
+    }
+    rows = keepPCsOnly(rows);
     if (!rows.length) {
       section.innerHTML = title + '<div class="panel"><div class="no-data">No achievements ' + (session === "all" ? "yet" : "this session") + ".</div></div>";
       return place(section);
