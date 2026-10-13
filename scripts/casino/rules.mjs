@@ -17,11 +17,33 @@
 
 // ── Randomness ───────────────────────────────────────────────────────────────
 
-/** A fair random float in [0, 1). */
+/**
+ * A fair random float in [0, 1), from the browser's cryptographic generator.
+ * Used for everything that decides a result (cards, the wheel, the race).
+ * Drawn in batches: one call per number is slow.
+ */
+let pool = new Uint32Array(0), poolAt = 0;
 export function random() {
   const c = globalThis.crypto;
-  if (c?.getRandomValues) { const a = new Uint32Array(1); c.getRandomValues(a); return a[0] / 2 ** 32; }
-  return Math.random();
+  if (!c?.getRandomValues) return Math.random();
+  if (poolAt >= pool.length) { pool = new Uint32Array(2048); c.getRandomValues(pool); poolAt = 0; }
+  return pool[poolAt++] / 2 ** 32;
+}
+
+/**
+ * A fast generator (sfc32) for estimates that don't decide anything — the
+ * thousands of practice races behind the lizard odds. Seeded fresh each time.
+ */
+export function fastRandom(seed = Math.floor(random() * 2 ** 32)) {
+  let a = seed >>> 0, b = 0x9e3779b9, c = 0x243f6a88, d = 0xb7e15162;
+  const next = () => {
+    a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0;
+    let t = (a + b) | 0;
+    a = b ^ (b >>> 9); b = (c + (c << 3)) | 0; c = (c << 21) | (c >>> 11); d = (d + 1) | 0; t = (t + d) | 0; c = (c + t) | 0;
+    return (t >>> 0) / 4294967296;
+  };
+  for (let i = 0; i < 12; i++) next();   // warm up
+  return next;
 }
 export const randomInt = (n, rng = random) => Math.floor(rng() * n);
 
@@ -200,7 +222,7 @@ export function simulateRace(field, rng = random) {
 }
 
 /** Each lizard's chance of winning this field, by simulation. */
-export function winChances(field, runs = 4000, rng = random) {
+export function winChances(field, runs = 4000, rng = fastRandom()) {
   const wins = Object.fromEntries(field.map(L => [L.id, 0]));
   for (let r = 0; r < runs; r++) wins[simulateRace(field, rng).order[0]]++;
   return Object.fromEntries(field.map(L => [L.id, (wins[L.id] + 0.5) / (runs + 0.5 * field.length)]));
@@ -225,7 +247,7 @@ export const lizardReturn = (cp, [a, b]) => cp + Math.floor(cp * a / b);
 export const drawField = (count = 4, rng = random) => shuffle(STABLE, rng).slice(0, count);
 
 /** Recent form for every lizard: last 6 placings (1–4), newest last. */
-export function seedForm(rng = random, races = 6) {
+export function seedForm(rng = fastRandom(), races = 6) {
   const form = Object.fromEntries(STABLE.map(L => [L.id, []]));
   for (const L of STABLE) {
     for (let r = 0; r < races; r++) {
