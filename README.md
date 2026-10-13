@@ -186,7 +186,7 @@ a player who's gone quiet).
 | Game | Rules |
 |---|---|
 | Blackjack | 6-deck shoe (reshuffled at the cut card, carried between rounds). Dealer stands on all 17s and peeks for blackjack. Blackjack pays 3:2. Double on any first two cards (also after a split). Split any two cards of the same value, up to 4 hands; split aces get one card each, and 21 on a split hand isn't a blackjack. Insurance (half the bet) when the dealer shows an ace pays 2:1. |
-| Roulette | European single zero. Set your stake, click the board to place it, right-click to take it back. Numbers pay 35:1, dozens and columns 2:1, red/black, odd/even and 1–18/19–36 evens. Zero loses every outside bet. The wheel spins for about 7 seconds and stops on the same number on every screen. |
+| Roulette | European single zero. Set your stake, click the board to place it, right-click to take it back. Numbers pay 35:1, dozens and columns 2:1, red/black, odd/even and 1–18/19–36 evens. Zero loses every outside bet. The result is drawn first, then played out over about 7 seconds the same on every screen: the wheel turns one way, the ball races round the rim the other way, drops, bounces across a few pockets and settles in the winning one. |
 | Lizard Races | Four lizards are drawn from a stable of ten, each with hidden speed, consistency and finishing kick. The odds come from simulating that exact field 3,000 times, less the house's cut (about 12%), so favourites really do win more often. Each lizard's last six finishes show as its form. Back one or more lizards to win. The race lasts about 6–7 seconds, is the same on every screen, and calls the lead changes. |
 
 **Betting.** Bets are gold, not chips: type a stake or add +1 / +10 / +25 /

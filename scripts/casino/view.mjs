@@ -15,7 +15,7 @@ let last = null;           // last state rendered
 const seenCards = new Set();
 const seenHidden = new Set();
 // Bets being built: stake = gold per click on the board (roulette / lizards); bj = each blackjack bet
-const draft = { stake: 100, bj: {}, roulette: {}, lizards: {}, as: null, round: null };
+const draft = { stake: 0, bj: {}, roulette: {}, lizards: {}, as: null, round: null };
 let busy = false;
 
 const COIN_STEPS = [1, 10, 25, 100];
@@ -82,6 +82,22 @@ function stakeHtml(state, key, cp, hint = "") {
       ${hint ? `<div class="cz-note">${hint}</div>` : ""}
     </div>`;
 }
+const stakeEcho = () => (draft.stake ? gp(draft.stake) : "your stake");
+/** After the stake changes: update the inputs and everything that shows it, in place. */
+function refreshStake(body) {
+  body.querySelectorAll("[data-stake]").forEach(input => {
+    if (document.activeElement === input) return;
+    const cp = stakeOf(input.dataset.stake);
+    input.value = cp ? +(cp / 100).toFixed(2) : "";
+  });
+  body.querySelectorAll("[data-stake-clear]").forEach(b => { b.disabled = !stakeOf(b.dataset.stakeClear); });
+  body.querySelectorAll("[data-stake-echo]").forEach(e => { e.textContent = stakeEcho(); });
+  body.querySelectorAll("[data-lz-add]").forEach(b => { b.disabled = !draft.stake; b.textContent = `＋ ${draft.stake ? gp(draft.stake) : "stake"}`; });
+  body.querySelectorAll("[data-bj-bet]").forEach(b => {
+    const cp = draft.bj[b.dataset.bjBet] ?? 0;
+    b.disabled = cp < MIN_BET_CP; b.textContent = cp ? `Place bet (${gp(cp)})` : "Place bet";
+  });
+}
 const stakeOf = (key) => key === "stake" ? draft.stake : draft.bj[key.slice(3)] ?? 0;
 function setStake(key, cp, maxCp) {
   cp = Math.max(0, Math.min(maxCp, Math.round(cp)));
@@ -133,6 +149,7 @@ export function renderCasino(state) {
   }
   updateStage(body.querySelector("[data-keep]"), state);
   bind(body, state);
+  bindQuick(body);
   if (focusKey) {
     const input = body.querySelector(`[data-stake="${focusKey}"]`);
     if (input) { input.value = typing.value; input.focus(); try { input.setSelectionRange(caret, caret); } catch {} }
@@ -348,19 +365,44 @@ function blackjackControls(state, t, id, s) {
 
 // Roulette ─────────────────────────────────────────────────────────────────────
 
-function rouletteHtml(state, t) {
-  const ids = bettingAs(t);
-  const placed = {};   // key → [{ id, cp, draft }]
+/** Coins on each board spot: placed bets (everyone's) and this client's unplaced ones. key → html */
+function rouletteChips(t) {
+  const placed = {};
   const add = (b, id, isDraft) => (placed[R.rouletteKey(b)] ??= []).push({ id, cp: b.cp, draft: isDraft, won: b.returnCp > 0 });
   for (const id of t.players) for (const b of t.seats[id].bets ?? []) add(b, id, false);
   for (const [id, bets] of Object.entries(draft.roulette)) if (t.seats[id]?.status === "betting") for (const b of bets) add(b, id, true);
   const colourIdx = Object.fromEntries(t.players.map((id, i) => [id, i % 6]));
-  const chipsOn = (key) => (placed[key] ?? []).map(p => `<span class="cz-dot p${colourIdx[p.id]}${p.draft ? " draft" : ""}${p.won ? " won" : ""}" title="${escapeHtml(nameOf(p.id))}: ${gp(p.cp)}">${+(p.cp / 100).toFixed(2)}</span>`).join("");
+  const out = {};
+  for (const [key, list] of Object.entries(placed)) {
+    out[key] = list.map(p => `<span class="cz-dot p${colourIdx[p.id]}${p.draft ? " draft" : ""}${p.won ? " won" : ""}" title="${escapeHtml(nameOf(p.id))}: ${gp(p.cp)}">${+(p.cp / 100).toFixed(2)}</span>`).join("");
+  }
+  return out;
+}
+const rouletteDraftTotal = () => (draft.roulette[draft.as] ?? []).reduce((a, b) => a + b.cp, 0);
+
+/** After a click on the board: update just the coins and the totals, not the whole window. */
+function refreshRoulette(body, t) {
+  const chips = rouletteChips(t);
+  body.querySelectorAll("[data-rb]").forEach(c => {
+    const html = chips[c.dataset.key] ?? "";
+    const holder = c.querySelector(".cz-cell-chips");
+    if (holder.innerHTML !== html) holder.innerHTML = html;
+  });
+  const total = rouletteDraftTotal();
+  const place = body.querySelector("[data-rl-place]"), clear = body.querySelector("[data-rl-clear]");
+  if (place) { place.disabled = !total; place.textContent = `Place bets (${gp(total)})`; }
+  if (clear) clear.disabled = !total;
+}
+
+function rouletteHtml(state, t) {
+  const ids = bettingAs(t);
+  const chips = rouletteChips(t);
+  const colourIdx = Object.fromEntries(t.players.map((id, i) => [id, i % 6]));
   const win = t.phase === "done" ? t.results?.number : null;
   const cell = (b, label, cls = "") => {
     const key = R.rouletteKey(b);
     const hit = win !== null && win !== undefined && R.rouletteWins(b, win);
-    return `<button type="button" class="cz-cell ${cls}${hit ? " hit" : ""}" data-rb='${JSON.stringify(b)}' ${ids.length ? "" : "disabled"}><span class="cz-cell-label">${label}</span><span class="cz-cell-chips">${chipsOn(key)}</span></button>`;
+    return `<button type="button" class="cz-cell ${cls}${hit ? " hit" : ""}" data-rb='${JSON.stringify(b)}' data-key="${key}" ${ids.length ? "" : "disabled"}><span class="cz-cell-label">${label}</span><span class="cz-cell-chips">${chips[key] ?? ""}</span></button>`;
   };
   let grid = "";
   for (let row = 0; row < 3; row++) {
@@ -380,12 +422,11 @@ function rouletteHtml(state, t) {
       </div>
     </div>`;
   const mineBetting = ids.length > 0;
-  const myDraft = draft.roulette[draft.as] ?? [];
-  const draftTotal = myDraft.reduce((a, b) => a + b.cp, 0);
+  const draftTotal = rouletteDraftTotal();
   const controls = mineBetting ? `
     <div class="cz-controls">
       ${asPicker(t, ids)}
-      ${stakeHtml(state, "stake", draft.stake, `Click the board to put ${draft.stake ? gp(draft.stake) : "your stake"} down; right-click to take it back.`)}
+      ${stakeHtml(state, "stake", draft.stake, `Click the board to put <span data-stake-echo>${stakeEcho()}</span> down; right-click to take it back.`)}
       <div class="cz-row">
         <button type="button" class="cz-btn primary" data-rl-place${draftTotal ? "" : " disabled"}>Place bets (${gp(draftTotal)})</button>
         <button type="button" class="cz-btn ghost" data-rl-clear${draftTotal ? "" : " disabled"}>Clear my bets</button>
@@ -410,44 +451,144 @@ function rouletteHtml(state, t) {
 }
 
 const POCKET = 360 / 37;
-function wheelSvg() {
-  const R1 = 120, R2 = 92, R3 = 62;
-  const pt = (r, deg) => { const a = (deg - 90) * Math.PI / 180; return [r * Math.cos(a), r * Math.sin(a)]; };
-  let wedges = "", labels = "";
+const BALL_TRACK = 126;     // radius of the wooden rim the ball races round
+const BALL_POCKET = 91;     // radius where it settles in a pocket
+const LAND = 0.68;          // share of the spin before the ball drops into its pocket
+
+/**
+ * The wheel in three layers so spinning never redraws anything: a still rim,
+ * the numbered disc (rotated as a whole) and the ball (moved by transform).
+ */
+function wheelHtml() {
+  const R1 = 120, R2 = 74, R3 = 42;
+  const pt = (r, deg) => { const a = (deg - 90) * Math.PI / 180; return [+(r * Math.cos(a)).toFixed(2), +(r * Math.sin(a)).toFixed(2)]; };
+  let wedges = "", labels = "", frets = "";
   R.WHEEL.forEach((n, i) => {
     const a0 = i * POCKET - POCKET / 2, a1 = a0 + POCKET;
-    const [x0, y0] = pt(R1, a0), [x1, y1] = pt(R1, a1), [x2, y2] = pt(R2 - 18, a1), [x3, y3] = pt(R2 - 18, a0);
-    const fill = n === 0 ? "#1e7a46" : R.REDS.has(n) ? "#a3241f" : "#141414";
-    wedges += `<path d="M${x0},${y0} A${R1},${R1} 0 0 1 ${x1},${y1} L${x2},${y2} A${R2 - 18},${R2 - 18} 0 0 0 ${x3},${y3} Z" fill="${fill}" stroke="#c9a84c" stroke-width=".6"/>`;
-    const [lx, ly] = pt(R1 - 12, i * POCKET);
-    labels += `<text x="${lx}" y="${ly}" transform="rotate(${i * POCKET} ${lx} ${ly})" text-anchor="middle" dominant-baseline="central">${n}</text>`;
+    const [x0, y0] = pt(R1, a0), [x1, y1] = pt(R1, a1), [x2, y2] = pt(R2, a1), [x3, y3] = pt(R2, a0);
+    const fill = n === 0 ? "#1e7a46" : R.REDS.has(n) ? "#a3241f" : "#161616";
+    wedges += `<path d="M${x0},${y0} A${R1},${R1} 0 0 1 ${x1},${y1} L${x2},${y2} A${R2},${R2} 0 0 0 ${x3},${y3} Z" fill="${fill}"/>`;
+    const [fx0, fy0] = pt(R1, a0), [fx1, fy1] = pt(R2, a0);
+    frets += `<line x1="${fx0}" y1="${fy0}" x2="${fx1}" y2="${fy1}"/>`;
+    const [lx, ly] = pt(109, i * POCKET);
+    labels += `<text x="${lx}" y="${ly}" transform="rotate(${+(i * POCKET).toFixed(2)} ${lx} ${ly})" text-anchor="middle" dominant-baseline="central">${n}</text>`;
   });
   return `
-    <svg class="cz-wheel" viewBox="-135 -135 270 270">
-      <circle r="132" fill="#3b2412" stroke="#c9a84c" stroke-width="3"/>
-      <circle r="124" fill="#5a3818"/>
-      <g class="cz-wheel-rot">
-        ${wedges}<g class="cz-wheel-nums">${labels}</g>
-        <circle r="${R2 - 18}" fill="#6b4420" stroke="#c9a84c" stroke-width="1.5"/>
-        <circle r="${R3 - 20}" fill="#8a5a2a" stroke="#e8c65a" stroke-width="1"/>
-        ${[0, 90, 180, 270].map(d => `<rect x="-3" y="-${R3 - 6}" width="6" height="${(R3 - 6) * 2}" rx="3" fill="#c9a84c" transform="rotate(${d / 2})"/>`).join("")}
-        <circle r="9" fill="#e8c65a"/>
-      </g>
-      <g class="cz-ball-rot"><circle cx="0" cy="-${R1 - 26}" r="6" fill="#f4f1ea" stroke="#999" stroke-width=".8"/></g>
-      <path d="M0,-118 L-8,-134 L8,-134 Z" fill="#e8c65a" stroke="#3b2412" stroke-width="1.5"/>
-    </svg>
-    <div class="cz-wheel-result"></div>`;
+    <div class="cz-wheel-box">
+      <svg class="cz-wheel-rim" viewBox="-135 -135 270 270" aria-hidden="true">
+        <circle r="133" fill="#2e1b0c" stroke="#c9a84c" stroke-width="2.5"/>
+        <circle r="129" fill="#5a3818"/><circle r="123" fill="#3b2412"/>
+        <circle r="121" fill="none" stroke="#c9a84c" stroke-width="1"/>
+      </svg>
+      <div class="cz-wheel-disc">
+        <svg viewBox="-135 -135 270 270" aria-hidden="true">
+          ${wedges}
+          <g stroke="#c9a84c" stroke-width=".8">${frets}</g>
+          <circle r="${R1}" fill="none" stroke="#c9a84c" stroke-width="1"/>
+          <circle r="98" fill="none" stroke="#c9a84c" stroke-width=".6" opacity=".7"/>
+          <g class="cz-wheel-nums">${labels}</g>
+          <circle r="${R2}" fill="#6b4420" stroke="#c9a84c" stroke-width="1.5"/>
+          <circle r="${R3}" fill="#8a5a2a" stroke="#e8c65a" stroke-width="1"/>
+          ${[0, 45, 90, 135].map(d => `<rect x="-3" y="-${R2 - 8}" width="6" height="${(R2 - 8) * 2}" rx="3" fill="#c9a84c" transform="rotate(${d})"/>`).join("")}
+          <circle r="10" fill="#e8c65a" stroke="#8a6d2b"/>
+        </svg>
+      </div>
+      <div class="cz-ball-arm"><div class="cz-ball"></div></div>
+      <div class="cz-wheel-result"></div>
+    </div>`;
+}
+
+/** A small seeded random generator, so every screen bounces the ball the same way. */
+function seeded(text) {
+  let h = 2166136261;
+  for (const ch of String(text)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; };
+}
+const easeOut = (x, p = 3) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), p);
+
+/**
+ * Where the wheel and ball are `ms` into a spin. The result is decided before
+ * the spin; this just makes it look real: the wheel turns clockwise and slows,
+ * the ball races the other way round the rim, drops, bounces across a few
+ * pockets and settles in the winning one, then rides round with the wheel.
+ */
+function spinPose(spin, ms) {
+  const T = spin.ms ?? 7000, Tl = T * LAND;
+  const rnd = seeded(spin.id);
+  // every random draw up front, in a fixed order, so each frame agrees with the last
+  const wheelTurn = 360 * 2.5 + rnd() * 360;               // how far the wheel turns in all
+  const hopScale = 0.8 + rnd() * 0.4;
+  const scatter = (rnd() < 0.5 ? -1 : 1) * (6 + rnd() * 8); // degrees it skitters sideways
+  const W = wheelTurn * easeOut(ms / T, 2.6);
+  const pocketAt = (w) => w + R.WHEEL.indexOf(spin.result) * POCKET;
+  // Ball: from the top, about seven laps the other way, arriving exactly over its pocket at Tl
+  const land = pocketAt(wheelTurn * easeOut(Tl / T, 2.6));
+  const laps = 360 * (Math.floor(land / 360) + 7);
+  const target = land - laps;
+  if (ms >= Tl) return { W, B: pocketAt(W) - laps, r: BALL_POCKET };   // in its pocket, riding round with the wheel
+  const p = ms / Tl;
+  let B = target * easeOut(p, 2.2);
+  let r = BALL_TRACK;
+  // Last stretch: it falls off the rim, bounces over the frets, skitters a little, settles
+  const drop = 0.72;
+  if (p > drop) {
+    const q = (p - drop) / (1 - drop);                       // 0 → 1
+    const fall = Math.min(1, q / 0.25);
+    r = BALL_POCKET + (BALL_TRACK - BALL_POCKET) * (1 - easeOut(fall, 2));
+    if (q > 0.25) {
+      const hops = [0.34, 0.6, 0.8, 1];
+      const k = hops.findIndex(h => q <= h);
+      const from = k ? hops[k - 1] : 0.25, to = hops[k];
+      r = BALL_POCKET + [11, 6, 2.5, 0][k] * hopScale * Math.sin(Math.PI * (q - from) / (to - from));
+    }
+    B += scatter * Math.sin(Math.PI * q) * (1 - q);
+  }
+  return { W, B, r };
+}
+
+function updateWheel(el, t) {
+  const disc = el.querySelector(".cz-wheel-disc"), arm = el.querySelector(".cz-ball-arm"), ball = el.querySelector(".cz-ball");
+  const out = el.querySelector(".cz-wheel-result");
+  const pose = ({ W, B, r }) => {
+    disc.style.transform = `rotate(${W.toFixed(2)}deg)`;
+    arm.style.transform = `rotate(${B.toFixed(2)}deg)`;
+    ball.style.transform = `translateY(${(-r * el.querySelector(".cz-wheel-box").offsetWidth / 270).toFixed(2)}px)`;
+  };
+  const showResult = () => { out.innerHTML = `<span class="cz-hist big ${R.colourOf(t.spin.result)}">${t.spin.result}</span>`; };
+  if (!t.spin) { out.textContent = ""; if (!el.dataset.posed) { el.dataset.posed = "1"; pose({ W: 0, B: 0, r: BALL_TRACK }); } return; }
+  if (el.dataset.spun === t.spin.id) { if (t.phase === "done") showResult(); return; }
+  el.dataset.spun = t.spin.id;
+  const T = t.spin.ms ?? 7000;
+  if (t.phase !== "spinning") { pose(spinPose(t.spin, T)); return showResult(); }   // arrived late
+  out.textContent = "";
+  let start = null;
+  const frame = (now) => {
+    start ??= now;
+    const ms = Math.max(0, now - start);
+    pose(spinPose(t.spin, Math.min(ms, T)));
+    if (ms < T && el.dataset.spun === t.spin.id) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
 }
 
 // Lizards ─────────────────────────────────────────────────────────────────────
 
+function runnerBetHtml(lid) {
+  const cp = draft.lizards[draft.as]?.[lid] ?? 0;
+  return `${cp ? `<span class="cz-stake">${coinHtml(cp)}</span>` : ""}<button type="button" class="cz-btn small" data-lz-add="${lid}"${draft.stake ? "" : " disabled"}>＋ ${draft.stake ? gp(draft.stake) : "stake"}</button>${cp ? `<button type="button" class="cz-btn small ghost" data-lz-clear="${lid}">✕</button>` : ""}`;
+}
+const lizardDraftTotal = () => Object.values(draft.lizards[draft.as] ?? {}).reduce((a, b) => a + b, 0);
+function refreshLizards(body) {
+  body.querySelectorAll("[data-runner]").forEach(el => { el.innerHTML = runnerBetHtml(el.dataset.runner); });
+  const total = lizardDraftTotal(), place = body.querySelector("[data-lz-place]");
+  if (place) { place.disabled = !total; place.textContent = `Place bets (${gp(total)})`; }
+}
+
 function lizardsHtml(state, t) {
   const ids = bettingAs(t);
-  const myDraft = draft.lizards[draft.as] ?? {};
   const backers = (lid) => t.players.flatMap(id => (t.seats[id].bets ?? []).filter(b => b.lizard === lid).map(b => ({ id, cp: b.cp })));
   const placing = t.phase === "done" ? Object.fromEntries((t.results?.order ?? []).map((id, i) => [id, i + 1])) : {};
   const runners = t.field.map((L, i) => {
-    const mineCp = myDraft[L.id] ?? 0;
     const b = backers(L.id);
     const place = placing[L.id];
     return `
@@ -460,10 +601,10 @@ function lizardsHtml(state, t) {
           ${b.length ? `<div class="cz-backers">${b.map(x => `<span class="cz-betpill">${escapeHtml(nameOf(x.id))} ${gp(x.cp)}</span>`).join("")}</div>` : ""}
         </div>
         <div class="cz-odds">${R.oddsText(L.odds)}</div>
-        ${ids.length ? `<div class="cz-runner-bet">${mineCp ? `<span class="cz-stake">${coinHtml(mineCp)}</span>` : ""}<button type="button" class="cz-btn small" data-lz-add="${L.id}"${draft.stake ? "" : " disabled"}>＋ ${draft.stake ? gp(draft.stake) : "stake"}</button>${mineCp ? `<button type="button" class="cz-btn small ghost" data-lz-clear="${L.id}">✕</button>` : ""}</div>` : ""}
+        ${ids.length ? `<div class="cz-runner-bet" data-runner="${L.id}">${runnerBetHtml(L.id)}</div>` : ""}
       </div>`;
   }).join("");
-  const draftTotal = Object.values(myDraft).reduce((a, b) => a + b, 0);
+  const draftTotal = lizardDraftTotal();
   const controls = ids.length ? `
     <div class="cz-controls">
       ${asPicker(t, ids)}
@@ -506,7 +647,7 @@ function trackHtml(t) {
   const lanes = t.field.map((L, i) => `
     <div class="cz-lane" style="--liz:${L.colour}">
       <span class="cz-lane-no">${i + 1}</span>
-      <div class="cz-liz" data-liz="${L.id}" style="left:0%">${lizardSvg(i + 1)}</div>
+      <div class="cz-liz" data-liz="${L.id}">${lizardSvg(i + 1)}</div>
       <span class="cz-lane-place" data-place="${L.id}"></span>
     </div>`).join("");
   return `<div class="cz-track"><div class="cz-rail"></div>${lanes}<div class="cz-call">${t.phase === "betting" ? "The lizards are in their boxes…" : ""}</div></div>`;
@@ -518,7 +659,7 @@ function buildStage(key, state) {
   const el = document.createElement("div");
   el.dataset.keep = key;
   el.className = "cz-stage";
-  el.innerHTML = key.startsWith("wheel") ? wheelSvg() : trackHtml(state.table);
+  el.innerHTML = key.startsWith("wheel") ? wheelHtml() : trackHtml(state.table);
   return el;
 }
 
@@ -527,30 +668,6 @@ function updateStage(el, state) {
   const t = state.table;
   if (t.game === "roulette") return updateWheel(el, t);
   if (t.game === "lizards") return updateTrack(el, t);
-}
-
-function updateWheel(el, t) {
-  const rot = el.querySelector(".cz-wheel-rot"), ball = el.querySelector(".cz-ball-rot"), out = el.querySelector(".cz-wheel-result");
-  if (!t.spin) { out.textContent = ""; return; }
-  const idx = R.WHEEL.indexOf(t.spin.result);
-  const target = 360 * 5 + (360 - idx * POCKET);
-  const showResult = () => { out.innerHTML = `<span class="cz-hist big ${R.colourOf(t.spin.result)}">${t.spin.result}</span>`; };
-  if (el.dataset.spun === t.spin.id) { if (t.phase === "done") showResult(); return; }
-  el.dataset.spun = t.spin.id;
-  if (t.phase !== "spinning") {   // arrived late: just show where it landed
-    rot.style.transition = ball.style.transition = "none";
-    rot.style.transform = `rotate(${target}deg)`; ball.style.transform = "rotate(0deg)";
-    return showResult();
-  }
-  rot.style.transition = ball.style.transition = "none";
-  rot.style.transform = "rotate(0deg)"; ball.style.transform = "rotate(0deg)";
-  void rot.getBoundingClientRect();
-  const ms = t.spin.ms ?? 7000;
-  rot.style.transition = `transform ${ms}ms cubic-bezier(.15,.55,.12,1)`;
-  ball.style.transition = `transform ${ms}ms cubic-bezier(.2,.6,.1,1)`;
-  rot.style.transform = `rotate(${target}deg)`;
-  ball.style.transform = `rotate(${-360 * 8}deg)`;
-  out.textContent = "";
 }
 
 function updateTrack(el, t) {
@@ -567,8 +684,12 @@ function updateTrack(el, t) {
   };
   const place = (frame) => ids.forEach((id, i) => {
     const x = lizEls[id];
-    // the lizard's nose (70px into its box) reaches the line at 100
-    if (x) { x.style.left = `calc((100% - 96px) * ${(frame[i] / 100).toFixed(4)})`; x.classList.toggle("running", frame[i] > 0 && frame[i] < 100); }
+    // the lizard's nose (70px into its box) reaches the line at 100; moved by transform (no re-layout)
+    if (x) {
+      const run = Math.max(0, (x.parentElement?.clientWidth ?? 0) - 96);
+      x.style.transform = `translateX(${(run * frame[i] / 100).toFixed(1)}px)`;
+      x.classList.toggle("running", frame[i] > 0 && frame[i] < 100);
+    }
     if (frame[i] >= 100) showPlace(id);
   });
   const finalWords = () => {
@@ -625,29 +746,6 @@ function bind(body, state) {
   body.querySelectorAll("[data-gm-pick]").forEach(sel => sel.addEventListener("change", () => {
     if (sel.value) send({ type: "pick", actorId: sel.value, game: sel.dataset.gmPick });
   }));
-  // Stakes: type an amount or add coins
-  body.querySelectorAll("[data-stake-add]").forEach(b => b.addEventListener("click", () => {
-    const key = b.dataset.stakeAdd, next = stakeOf(key) + Number(b.dataset.gp) * 100;
-    if (next > state.maxBetCp) ui.notifications.warn(`The table limit is ${gp(state.maxBetCp)}.`);
-    setStake(key, next, state.maxBetCp);
-    renderCasino(last);
-  }));
-  body.querySelectorAll("[data-stake-clear]").forEach(b => b.addEventListener("click", () => { setStake(b.dataset.stakeClear, 0, state.maxBetCp); renderCasino(last); }));
-  body.querySelectorAll("[data-stake]").forEach(input => {
-    const key = input.dataset.stake;
-    input.addEventListener("input", () => {
-      setStake(key, (Number(input.value) || 0) * 100, state.maxBetCp);
-      // keep typing: just refresh the blackjack button rather than redrawing everything
-      const bet = body.querySelector(`[data-bj-bet="${key.slice(3)}"]`);
-      if (bet) { const cp = stakeOf(key); bet.disabled = cp < MIN_BET_CP; bet.textContent = cp ? `Place bet (${gp(cp)})` : "Place bet"; }
-    });
-    input.addEventListener("change", () => {
-      if ((Number(input.value) || 0) * 100 > state.maxBetCp) ui.notifications.warn(`The table limit is ${gp(state.maxBetCp)}.`);
-      setStake(key, (Number(input.value) || 0) * 100, state.maxBetCp);
-      renderCasino(last);
-    });
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") input.blur(); });
-  });
   body.querySelectorAll("[data-sitout]").forEach(b => b.addEventListener("click", () => send({ type: "sitout", actorId: b.dataset.sitout })));
   body.querySelectorAll("[data-as]").forEach(sel => sel.addEventListener("change", () => { draft.as = sel.value; renderCasino(last); }));
   // Blackjack
@@ -661,48 +759,12 @@ function bind(body, state) {
     body.querySelectorAll("[data-act]").forEach(x => { x.disabled = true; });
     send({ type: b.dataset.act, actorId: b.dataset.actor, take: b.dataset.take === "1" }).then(ok => { if (!ok) renderCasino(last); });
   }));
-  // Roulette
-  body.querySelectorAll("[data-rb]").forEach(c => {
-    const bet = JSON.parse(c.dataset.rb);
-    const key = R.rouletteKey(bet);
-    c.addEventListener("click", () => {
-      if (!draft.as) return;
-      if (draft.stake < MIN_BET_CP) return ui.notifications.warn("Set your stake first (at least 1 gp).");
-      const list = draft.roulette[draft.as] ??= [];
-      const total = list.reduce((a, b) => a + b.cp, 0);
-      if (total + draft.stake > state.maxBetCp) return ui.notifications.warn(`The table limit is ${gp(state.maxBetCp)} a spin.`);
-      const existing = list.find(b => R.rouletteKey(b) === key);
-      if (existing) existing.cp += draft.stake; else list.push({ ...bet, cp: draft.stake });
-      renderCasino(last);
-    });
-    c.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      const list = draft.roulette[draft.as];
-      const existing = list?.find(b => R.rouletteKey(b) === key);
-      if (!existing) return;
-      existing.cp -= Math.max(MIN_BET_CP, draft.stake);
-      if (existing.cp < MIN_BET_CP) list.splice(list.indexOf(existing), 1);
-      renderCasino(last);
-    });
-  });
-  body.querySelector("[data-rl-clear]")?.addEventListener("click", () => { delete draft.roulette[draft.as]; renderCasino(last); });
   body.querySelector("[data-rl-place]")?.addEventListener("click", async (e) => {
     const id = draft.as;
     e.currentTarget.disabled = true;
     if (await send({ type: "bets", actorId: id, bets: draft.roulette[id] ?? [] })) delete draft.roulette[id];
     renderCasino(last);
   });
-  // Lizards
-  body.querySelectorAll("[data-lz-add]").forEach(b => b.addEventListener("click", () => {
-    if (!draft.as) return;
-    const d = draft.lizards[draft.as] ??= {};
-    const total = Object.values(d).reduce((a, x) => a + x, 0);
-    if (draft.stake < MIN_BET_CP) return ui.notifications.warn("Set your stake first (at least 1 gp).");
-    if (total + draft.stake > state.maxBetCp) return ui.notifications.warn(`The table limit is ${gp(state.maxBetCp)} a race.`);
-    d[b.dataset.lzAdd] = (d[b.dataset.lzAdd] ?? 0) + draft.stake;
-    renderCasino(last);
-  }));
-  body.querySelectorAll("[data-lz-clear]").forEach(b => b.addEventListener("click", () => { delete draft.lizards[draft.as]?.[b.dataset.lzClear]; renderCasino(last); }));
   body.querySelector("[data-lz-place]")?.addEventListener("click", async (e) => {
     const id = draft.as;
     e.currentTarget.disabled = true;
@@ -710,4 +772,82 @@ function bind(body, state) {
     if (await send({ type: "bets", actorId: id, bets })) delete draft.lizards[id];
     renderCasino(last);
   });
+}
+
+/**
+ * Quick, local clicks — stakes, putting coins on the board, backing a lizard —
+ * are handled once on the window (not re-bound on every redraw) and only
+ * update the bits they change, so they feel instant even in a busy Foundry.
+ */
+function bindQuick(body) {
+  if (body._czQuick) return;
+  body._czQuick = true;
+  const state = () => last;
+  const limitWarn = (what) => ui.notifications.warn(`The table limit is ${gp(state().maxBetCp)}${what}.`);
+
+  body.addEventListener("click", (e) => {
+    const t = state()?.table;
+    const add = e.target.closest("[data-stake-add]");
+    if (add) {
+      const key = add.dataset.stakeAdd, next = stakeOf(key) + Number(add.dataset.gp) * 100;
+      if (next > state().maxBetCp) limitWarn("");
+      setStake(key, next, state().maxBetCp);
+      return refreshStake(body);
+    }
+    const clear = e.target.closest("[data-stake-clear]");
+    if (clear) { setStake(clear.dataset.stakeClear, 0, state().maxBetCp); return refreshStake(body); }
+    const cell = e.target.closest("[data-rb]");
+    if (cell && !cell.disabled && t) {
+      if (!draft.as) return;
+      if (draft.stake < MIN_BET_CP) return ui.notifications.warn("Set your stake first (at least 1 gp).");
+      const list = draft.roulette[draft.as] ??= [];
+      if (rouletteDraftTotal() + draft.stake > state().maxBetCp) return limitWarn(" a spin");
+      const bet = JSON.parse(cell.dataset.rb), existing = list.find(b => R.rouletteKey(b) === cell.dataset.key);
+      if (existing) existing.cp += draft.stake; else list.push({ ...bet, cp: draft.stake });
+      return refreshRoulette(body, t);
+    }
+    if (e.target.closest("[data-rl-clear]") && t) { delete draft.roulette[draft.as]; return refreshRoulette(body, t); }
+    const back = e.target.closest("[data-lz-add]");
+    if (back && t) {
+      if (!draft.as) return;
+      if (draft.stake < MIN_BET_CP) return ui.notifications.warn("Set your stake first (at least 1 gp).");
+      if (lizardDraftTotal() + draft.stake > state().maxBetCp) return limitWarn(" a race");
+      const d = draft.lizards[draft.as] ??= {};
+      d[back.dataset.lzAdd] = (d[back.dataset.lzAdd] ?? 0) + draft.stake;
+      return refreshLizards(body);
+    }
+    const unback = e.target.closest("[data-lz-clear]");
+    if (unback) { delete draft.lizards[draft.as]?.[unback.dataset.lzClear]; return refreshLizards(body); }
+  });
+
+  body.addEventListener("contextmenu", (e) => {
+    const cell = e.target.closest("[data-rb]");
+    const t = state()?.table;
+    if (!cell || cell.disabled || !t) return;
+    e.preventDefault();
+    const list = draft.roulette[draft.as];
+    const existing = list?.find(b => R.rouletteKey(b) === cell.dataset.key);
+    if (!existing) return;
+    existing.cp -= Math.max(MIN_BET_CP, draft.stake);
+    if (existing.cp < MIN_BET_CP) list.splice(list.indexOf(existing), 1);
+    refreshRoulette(body, t);
+  });
+
+  // Typing a stake: update as you type, tidy it up (limit) when you leave the box
+  body.addEventListener("input", (e) => {
+    const input = e.target.closest("[data-stake]");
+    if (!input) return;
+    setStake(input.dataset.stake, (Number(input.value) || 0) * 100, state().maxBetCp);
+    refreshStake(body);
+  });
+  body.addEventListener("change", (e) => {
+    const input = e.target.closest("[data-stake]");
+    if (!input) return;
+    if ((Number(input.value) || 0) * 100 > state().maxBetCp) limitWarn("");
+    setStake(input.dataset.stake, (Number(input.value) || 0) * 100, state().maxBetCp);
+    const cp = stakeOf(input.dataset.stake);
+    input.value = cp ? +(cp / 100).toFixed(2) : "";
+    refreshStake(body);
+  });
+  body.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.closest("[data-stake]")) e.target.blur(); });
 }

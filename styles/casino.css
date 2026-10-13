@@ -18,7 +18,9 @@
   box-shadow: 0 18px 70px rgba(0,0,0,.85), inset 0 0 0 1px var(--brass-dim), inset 0 0 60px rgba(0,0,0,.6), 0 0 40px rgba(255,170,60,.12) !important;
   color: var(--parch); font-family: 'IM Fell English', 'Crimson Text', serif;
 }
-#cz-casino.cz-dialog .qa-win-body { padding: 0 1rem 1rem; }
+#cz-casino.cz-dialog .qa-win-body { padding: 0 1rem 1rem; contain: layout style; }
+/* Foundry eases buttons in and out; in here every hover should be instant */
+#cz-casino.cz-dialog button { transition: none !important; }
 #cz-casino * { box-sizing: border-box; }
 
 /* The hanging sign */
@@ -34,9 +36,9 @@
   text-shadow: 0 1px 0 #1a0f07, 0 -1px 0 rgba(255,240,200,.25), 0 0 18px rgba(232,198,90,.35); }
 .cz-sub { font-family: 'IM Fell English', serif; font-style: italic; color: #d8c79a; font-size: .95rem; margin-top: .15rem; }
 .cz-lamp { width: 16px; height: 26px; border-radius: 50% 50% 45% 45%; background: radial-gradient(circle at 50% 60%, #fff3c4 0, #ffb347 35%, #c4621c 70%, transparent 72%);
-  filter: drop-shadow(0 0 10px rgba(255,170,60,.9)); animation: czFlicker 3.2s infinite ease-in-out; }
+  box-shadow: 0 0 14px 4px rgba(255,170,60,.45); animation: czFlicker 3.2s infinite ease-in-out; will-change: opacity; }
 .cz-lamp:last-child { animation-delay: -1.3s; }
-@keyframes czFlicker { 0%,100% { opacity: 1; transform: scale(1); } 40% { opacity: .82; transform: scale(.94, 1.04); } 55% { opacity: .95; } 70% { opacity: .78; transform: scale(1.03, .96); } }
+@keyframes czFlicker { 0%,100% { opacity: 1; } 40% { opacity: .8; } 55% { opacity: .95; } 70% { opacity: .76; } }
 
 /* Buttons */
 #cz-casino.cz-dialog .cz-btn {
@@ -161,7 +163,6 @@
   font: 700 12px 'JetBrains Mono', monospace !important; color: #4a3208 !important; text-shadow: 0 1px 0 rgba(255,240,190,.7) !important;
   border: 1px solid #6b4c12 !important; background: radial-gradient(circle at 35% 30%, #fff6c4 0, #f3d36a 22%, #d0a136 58%, #8f6a1a 100%) !important;
   box-shadow: inset 0 0 0 3px rgba(255,238,170,.32), inset 0 0 0 4px rgba(107,76,18,.35), 0 3px 0 #5c4210, 0 4px 6px rgba(0,0,0,.45) !important;
-  transition: filter .12s ease, box-shadow .12s ease;
 }
 #cz-casino.cz-dialog .cz-coin-btn:hover { filter: brightness(1.12); box-shadow: inset 0 0 0 3px rgba(255,238,170,.45), inset 0 0 0 4px rgba(107,76,18,.35), 0 3px 0 #5c4210, 0 0 12px rgba(255,214,110,.7) !important; }
 #cz-casino.cz-dialog .cz-coin-btn:active { filter: brightness(.95); }
@@ -206,8 +207,13 @@
 .cz-roulette { display: grid; grid-template-columns: 290px 1fr; gap: 1rem; align-items: start; }
 .cz-wheel-col { display: flex; flex-direction: column; align-items: center; gap: .5rem; position: relative; z-index: 1; }
 .cz-stage { position: relative; }
-.cz-wheel { width: 270px; height: 270px; display: block; filter: drop-shadow(0 8px 10px rgba(0,0,0,.6)); }
-.cz-wheel-rot, .cz-ball-rot { transform-origin: 0 0; transform-box: view-box; }
+.cz-wheel-box { position: relative; width: 270px; height: 270px; border-radius: 50%; box-shadow: 0 10px 22px rgba(0,0,0,.6); }
+.cz-wheel-rim, .cz-wheel-disc, .cz-wheel-disc svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* The disc and the ball move by transform only: spinning never repaints the wheel */
+.cz-wheel-disc, .cz-ball-arm { will-change: transform; transform-origin: 50% 50%; }
+.cz-ball-arm { position: absolute; inset: 0; pointer-events: none; }
+.cz-ball { position: absolute; left: 50%; top: 50%; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; border-radius: 50%; will-change: transform;
+  background: radial-gradient(circle at 35% 30%, #ffffff 0, #f1eee6 40%, #b9b4a6 100%); box-shadow: 0 1px 2px rgba(0,0,0,.7); }
 .cz-wheel-nums text { font: 700 9px 'JetBrains Mono', monospace; fill: #f4efe0; }
 .cz-wheel-result { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; }
 .cz-history { display: flex; flex-wrap: wrap; gap: .2rem; align-items: center; justify-content: center; max-width: 280px; font-size: .8rem; }
@@ -256,7 +262,7 @@
 .cz-lane { position: relative; height: 50px; border-bottom: 2px dashed rgba(60,35,15,.35); }
 .cz-lane:last-of-type { border-bottom: none; }
 .cz-lane-no { position: absolute; left: -26px; top: 15px; width: 20px; height: 20px; border-radius: 3px; background: var(--liz); color: #fff; font: 700 12px 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(0,0,0,.5); }
-.cz-liz { position: absolute; top: 2px; width: 90px; height: 46px; will-change: left; z-index: 1; }
+.cz-liz { position: absolute; left: 0; top: 2px; width: 90px; height: 46px; will-change: transform; z-index: 1; }
 .cz-liz-svg { width: 90px; height: 40px; margin-top: 3px; overflow: visible; filter: drop-shadow(1px 3px 1.5px rgba(0,0,0,.45)); }
 .cz-liz-skin, .cz-liz-tail { fill: var(--liz); stroke: rgba(0,0,0,.55); stroke-width: 1; }
 .cz-liz-stripe { stroke: rgba(255,255,255,.28); stroke-width: 2.2; stroke-linecap: round; fill: none; }
