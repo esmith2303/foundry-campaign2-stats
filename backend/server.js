@@ -755,8 +755,13 @@ app.get("/api/achievement-baseline", authMiddleware, async (req, res) => {
             db.raw("SUM(CASE WHEN kind = 'buy' AND list_cp IS NOT NULL AND unit_cp < list_cp THEN 1 ELSE 0 END) as haggles"))
           .where("world_id", worldId).where("occurred_at", "<=", until).groupBy("actor_id"),
       ]);
-      const get = (id) => (actors[id] ??= { types: {}, shop: { spentCp: 0, items: 0, haggles: 0 } });
+      // Per-item totals for the types personal achievements look at (keep in step with engine.mjs ITEM_TYPES)
+      const byItem = await db("chat_outcomes").select("actor_id", "outcome_type", "item_name").count("* as n").sum("amount as sum").max("amount as max")
+        .where("world_id", worldId).where("occurred_at", "<=", until).whereIn("outcome_type", ["use", "kill", "surge_summon"]).whereNotNull("item_name")
+        .groupBy("actor_id", "outcome_type", "item_name");
+      const get = (id) => (actors[id] ??= { types: {}, items: {}, shop: { spentCp: 0, items: 0, haggles: 0 } });
       for (const r of types) get(r.actor_id).types[r.outcome_type] = { n: Number(r.n) || 0, sum: Number(r.sum) || 0, max: Number(r.max) || 0 };
+      for (const r of byItem) (get(r.actor_id).items[r.outcome_type] ??= {})[r.item_name] = { n: Number(r.n) || 0, sum: Number(r.sum) || 0, max: Number(r.max) || 0 };
       for (const r of shop) get(r.actor_id).shop = { spentCp: Number(r.spent_cp) || 0, items: Number(r.items) || 0, haggles: Number(r.haggles) || 0 };
     }
     res.json({ cutoff, uploads, actors });
@@ -787,10 +792,24 @@ app.get("/api/achievements", authMiddleware, async (req, res) => {
       const a = await achievementInfo(r.id);
       let desc = null;
       try { desc = a ? a.desc(a.tiers[Math.max(0, tier - 1)]) : null; } catch { /* leave it blank */ }
-      return { ...r, tier, desc };
+      return { ...r, tier, desc, tiered: !!a && a.tiers.length > 1 };
     }));
     rows.sort((a, b) => new Date(b.last_at) - new Date(a.last_at));
     res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Wild magic: surges, creatures summoned and unicorns, per character
+app.get("/api/wild-magic", authMiddleware, async (req, res) => {
+  try {
+    let q = db("chat_outcomes").select("actor_name")
+      .select(db.raw("SUM(CASE WHEN outcome_type = 'surge' THEN 1 ELSE 0 END) as surges"))
+      .select(db.raw("SUM(CASE WHEN outcome_type = 'surge_summon' THEN 1 ELSE 0 END) as summons"))
+      .select(db.raw("SUM(CASE WHEN outcome_type = 'unicorn' THEN 1 ELSE 0 END) as unicorns"))
+      .whereIn("outcome_type", ["surge", "surge_summon", "unicorn"]).groupBy("actor_name");
+    q = applyRange(q, await sessionRange(req.query.session));
+    q = applyExcludes(q, req.query.exclude, req.query.excludeWorlds);
+    res.json((await q).map(r => ({ actor_name: r.actor_name, surges: Number(r.surges) || 0, summons: Number(r.summons) || 0, unicorns: Number(r.unicorns) || 0 })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

@@ -182,10 +182,14 @@ function outcomeTypeFor(rollType) {
  *   canUserAct(userId, actorId) → bool (optional: may this user post entries for this character?),
  *   actorName(actorId, fallback) → string,
  *   resolveActorId?(uuid) → actorId|null   (live only: for token UUIDs without an Actor part)
+ *   characterOfUser?(userId) → actorId|null (live only: the player's own character)
  *   includeNpcs?: bool
  * }
  * @param itemFor  optional (actorId) → item name, for HP Updated cards (which don't
- *                 say which weapon/spell did it); extractAll() supplies it
+ *                 say which weapon/spell did it); buildLinks() supplies it
+ * @param link     optional { surgeD4, mainCharacter } from buildLinks(): the d4 the
+ *                 player rolled after a wild magic surge, and the character they
+ *                 usually play
  * @returns { messageId, timestamp, dice: [{actorId, actorName, dieType, face, count}],
  *            outcomes: [{actorId, actorName, type, success, key, amount, detail, item}] }
  *
@@ -196,8 +200,12 @@ function outcomeTypeFor(rollType) {
  *   damage_taken (amount, detail = type) · save · check · death · heal (one per
  *   heal used / "+" heal with amount) · attack_fix / save_fix (corrections)
  *   wager / gamble (casino stake and winnings in cp, detail = game)
+ *   surge (wild magic surge, amount = the d100) · surge_extreme (a 01 or 100)
+ *   surge_summon (the 05–08 "friendly creature" result, amount = the d4)
+ *   unicorn (that d4 was a 4) · use (an item / spell / feature card, item = name)
+ *   revive (healed a party member up from 0 HP)
  */
-export function extractMessage(message, ctx, itemFor = null) {
+export function extractMessage(message, ctx, itemFor = null, link = {}) {
   const messageId = message.id ?? message._id;
   // A "+" card that was undone counts for nothing (dice included)
   if (message.flags?.[MODULE_ID]?.abilityUse?.reverted) return { messageId, timestamp: message.timestamp, dice: [], outcomes: [], purchases: [] };
@@ -295,6 +303,12 @@ export function extractMessage(message, ctx, itemFor = null) {
 
     // Heals: one per healing activity used
     if (dnd.activity?.type === "heal") addOutcome(speakerId, "heal", true, "heal", message.speaker?.alias);
+
+    // The item / spell / feature card itself, for "cast it 25 times" achievements
+    if (!Array.isArray(midi.undoDamage) && !flags[MODULE_ID]) {
+      const used = itemNameFromCard(message);
+      if (used && !/^Concentration Check/i.test(used)) addOutcome(speakerId, "use", true, "use", message.speaker?.alias, 1, { item: used });
+    }
   }
 
   // ── Damage / healing actually applied (midi-qol's "HP Updated" card) ───────
@@ -317,6 +331,8 @@ export function extractMessage(message, ctx, itemFor = null) {
       const item = src ? itemFor?.(src) ?? null : null;
       if (r.kind === "heal") {
         if (src) addOutcome(src, "healing", true, `hp${i}`, null, r.amount, { item });
+        // Back on their feet: a party member healed up from 0 HP
+        if (src && tgtParty && ctx.isPlayerCharacter(src) && r.oldHP !== null && r.oldHP <= 0 && r.newHP > 0) addOutcome(src, "revive", true, `hp${i}`, null, 1, { item });
         return;
       }
       if (tgtParty) {
@@ -451,6 +467,21 @@ export function extractMessage(message, ctx, itemFor = null) {
       if (m.longShot) addOutcome(l.actorId, "lz_longshot", true, `c${i}`, null, 1);
     });
   }
+  // Wild magic surges: a d100 roll-table draw by a player. The 05–08 result
+  // summons a friendly creature, picked by the player's next d4 (4 = unicorn).
+  const surge = surgeRoll(message);
+  if (surge !== null && authorId) {
+    const own = ctx.characterOfUser?.(authorId) ?? link.mainCharacter ?? null;
+    const who = own ?? (speakerId && ctx.isPlayerCharacter(speakerId) ? speakerId : null);
+    if (who) {
+      addOutcome(who, "surge", true, "surge", null, surge);
+      if (surge === 1 || surge === 100) addOutcome(who, "surge_extreme", true, "surge", null, surge);
+      if (surge >= 5 && surge <= 8 && link.surgeD4) {
+        addOutcome(who, "surge_summon", true, "summon", null, link.surgeD4, { item: `Creature ${link.surgeD4}` });
+        if (link.surgeD4 === 4) addOutcome(who, "unicorn", true, "unicorn", null, 1);
+      }
+    }
+  }
   // End of a casino night: who finished up
   const night = flags[MODULE_ID]?.casinoNight;
   if (night?.nets && allowed(Object.keys(night.nets)[0])) {
@@ -507,45 +538,87 @@ export function extractMessage(message, ctx, itemFor = null) {
 
 /** Extract a whole chat log. Returns per-message results (including empty ones). */
 export function extractAll(messages, ctx) {
-  const itemFor = hpItemLinker(messages);
+  const links = buildLinks(messages.map(m => [m?.id ?? m?._id, linkInfo(m)]), ctx);
   const out = [];
   for (const m of messages) {
-    try { out.push(extractMessage(m, ctx, itemFor(m))); }
+    try { const l = links(m?.id ?? m?._id); out.push(extractMessage(m, ctx, l.itemFor ?? null, l)); }
     catch (e) { console.warn(`${MODULE_ID} | could not extract message ${m?.id ?? m?._id}:`, e); }
   }
   return out;
 }
 
+/** The d100 of a roll-table draw (how wild magic surges are rolled), or null. */
+export function surgeRoll(m) {
+  if (!m?.flags?.core?.RollTable) return null;
+  const r = asRollData(m.rolls?.[0]);
+  const t = r?.terms?.find(x => x?.faces);
+  return t?.faces === 100 && t.number === 1 ? Number(r.total) : null;
+}
+
+/** A message that's just a single d4 roll → its value, else null. */
+function loneD4(m) {
+  const rolls = m?.rolls ?? [];
+  if (rolls.length !== 1) return null;
+  const r = asRollData(rolls[0]);
+  const dice = (r?.terms ?? []).filter(x => x?.faces);
+  return dice.length === 1 && dice[0].faces === 4 && dice[0].number === 1 ? Number(r.total) : null;
+}
+
 /**
- * HP Updated cards don't name the weapon or spell, so pair each with the
- * closest item card (within 3 minutes) from the same character that rolled
- * damage or healing. Returns message → ((actorId) → item name | null).
+ * Some messages need context from others:
+ *   - HP Updated cards don't name the weapon or spell, so they're paired with
+ *     the closest item card (within 3 minutes) from the same character that
+ *     rolled damage or healing
+ *   - a wild magic surge's creature is the d4 the same player rolled within 3
+ *     minutes (before their next surge), and the surge belongs to the
+ *     character that player usually speaks as
+ * linkInfo() is the little each message contributes (cheap to keep per message);
+ * buildLinks() turns them all into (messageId) → { itemFor, surgeD4, mainCharacter }.
  */
-export function hpItemLinker(messages, windowMs = 180000) {
-  const cards = new Map();   // actorId → [{ ts, name }] sorted
-  for (const m of messages) {
-    const actorId = m?.speaker?.actor;
-    if (!actorId || m.flags?.["midi-qol"]?.undoDamage) continue;
-    const hasDamage = (m.rolls || []).some(r => asRollData(r)?.class === "DamageRoll");
-    if (!hasDamage) continue;
-    const name = itemNameFromCard(m);
-    if (!name) continue;
-    if (!cards.has(actorId)) cards.set(actorId, []);
-    cards.get(actorId).push({ ts: Number(m.timestamp) || 0, name });
+export function linkInfo(m) {
+  const hp = Array.isArray(m?.flags?.["midi-qol"]?.undoDamage);
+  const actor = m?.speaker?.actor ?? null;
+  const damageItem = actor && !hp && (m.rolls || []).some(r => asRollData(r)?.class === "DamageRoll") ? itemNameFromCard(m) : null;
+  return { ts: Number(m?.timestamp) || 0, author: m?.author ?? m?.user ?? null, actor, damageItem, hp, surge: surgeRoll(m), d4: loneD4(m) };
+}
+
+export function buildLinks(infos, ctx, windowMs = 180000) {
+  const list = [...infos].sort((a, b) => a[1].ts - b[1].ts);   // [[id, info]…]
+  const cards = new Map();    // actorId → [{ ts, name }] (sorted)
+  const speaks = new Map();   // userId → Map(actorId → count)
+  for (const [, x] of list) {
+    if (x.damageItem) { if (!cards.has(x.actor)) cards.set(x.actor, []); cards.get(x.actor).push({ ts: x.ts, name: x.damageItem }); }
+    if (x.author && x.actor && ctx.isPlayerCharacter(x.actor)) {
+      if (!speaks.has(x.author)) speaks.set(x.author, new Map());
+      speaks.get(x.author).set(x.actor, (speaks.get(x.author).get(x.actor) || 0) + 1);
+    }
   }
-  for (const list of cards.values()) list.sort((a, b) => a.ts - b.ts);
-  return (m) => {
-    if (!Array.isArray(m?.flags?.["midi-qol"]?.undoDamage)) return null;
-    const ts = Number(m.timestamp) || 0;
-    return (actorId) => {
-      let best = null;
-      for (const c of cards.get(actorId) ?? []) {
-        const dt = Math.abs(c.ts - ts);
-        if (dt <= windowMs && (!best || dt < best.dt)) best = { dt, name: c.name };
+  const main = (u) => [...(speaks.get(u) ?? new Map())].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const links = new Map();
+  list.forEach(([id, x], i) => {
+    if (x.hp) {
+      links.set(id, { itemFor: (actorId) => {
+        let best = null;
+        for (const c of cards.get(actorId) ?? []) {
+          const dt = Math.abs(c.ts - x.ts);
+          if (dt <= windowMs && (!best || dt < best.dt)) best = { dt, name: c.name };
+        }
+        return best?.name ?? null;
+      } });
+    }
+    if (x.surge !== null) {
+      let d4 = null;
+      for (let j = i + 1; j < list.length; j++) {
+        const y = list[j][1];
+        if (y.ts - x.ts > windowMs) break;
+        if (y.author !== x.author) continue;
+        if (y.surge !== null) break;
+        if (y.d4 !== null) { d4 = y.d4; break; }
       }
-      return best?.name ?? null;
-    };
-  };
+      links.set(id, { ...links.get(id), surgeD4: d4, mainCharacter: main(x.author) });
+    }
+  });
+  return (id) => links.get(id) ?? {};
 }
 
 /** Per-actor totals, for logging / dry runs. */

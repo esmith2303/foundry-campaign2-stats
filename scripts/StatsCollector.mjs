@@ -34,6 +34,8 @@ export function chatContext() {
       if (!user || !actor) return true;   // can't check (deleted user/actor): keep it
       return user.isGM || actor.testUserPermission(user, "OWNER");
     },
+    // The character a player has assigned (for wild magic surge draws)
+    characterOfUser: (userId) => game.users.get(userId)?.character?.id ?? null,
     // Token UUIDs without an "Actor." part (unlinked tokens)
     resolveActorId: (uuid) => {
       try { const doc = fromUuidSync(uuid); return doc?.actor?.id ?? (doc?.documentName === "Actor" ? doc.id : null); }

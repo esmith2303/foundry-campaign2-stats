@@ -8,12 +8,17 @@
  *   hidden         not shown anywhere until unlocked
  *   whisper        the card only goes to the GM and the character's player
  *                  (anything that would give away a secret death save)
+ *   character      personal: only the character whose name starts with this
+ *                  can earn it
  */
 
 const n = (c, type) => c.types[type]?.n ?? 0;
 const sum = (c, type) => c.types[type]?.sum ?? 0;
 const max = (c, type) => c.types[type]?.max ?? 0;
 const once = (id) => (c, seq) => (seq.has(id) ? 1 : 0);
+// Per-item totals: how many times items matching `re` were used / killed with…
+const itemN = (c, type, re) => Object.entries(c.items?.[type] ?? {}).reduce((t, [name, v]) => t + (re.test(name) ? v.n : 0), 0);
+const distinct = (c, type) => Object.values(c.items?.[type] ?? {}).filter(v => v.n > 0).length;
 
 export const ACHIEVEMENTS = [
   // ── Dice ──────────────────────────────────────────────────────────────────
@@ -90,12 +95,44 @@ export const ACHIEVEMENTS = [
   { id: "executioner", group: "Recaps", icon: "fas fa-user-ninja", name: "Executioner Emeritus",
     tiers: [3], desc: (t) => `Earn Executioner ${t} times`, value: (c) => n(c, "recap_exec") },
 
+  // ── Personal: Avolin (bard) ─────────────────────────────────────────────
+  { id: "roasted", group: "Personal", character: "Avolin", icon: "fas fa-microphone", name: "Roasted",
+    tiers: [1], desc: () => "Kill something with Vicious Mockery", value: (c) => itemN(c, "kill", /Vicious Mockery/i) },
+  { id: "hypeMan", group: "Personal", character: "Avolin", icon: "fas fa-bullhorn", name: "Hype Man",
+    tiers: [50], desc: (t) => `Hand out ${t} Bardic Inspirations`, value: (c) => itemN(c, "use", /^Bardic Inspiration/i) },
+  { id: "encore", group: "Personal", character: "Avolin", icon: "fas fa-music", name: "Encore!",
+    tiers: [3], desc: (t) => `Get ${t} downed allies back on their feet`, value: (c) => n(c, "revive") },
+
+  // ── Personal: Lucien (paladin) ──────────────────────────────────────────
+  { id: "goingForGold", group: "Personal", character: "Lucien", icon: "fas fa-medal", name: "Going for Gold",
+    tiers: [10], desc: (t) => `Kill ${t} enemies with a javelin`, value: (c) => itemN(c, "kill", /Javelin/i) },
+  { id: "smiteClub", group: "Personal", character: "Lucien", icon: "fas fa-sun", name: "Smite Club",
+    tiers: [50], desc: (t) => `Smite ${t} times`, value: (c) => itemN(c, "use", /Smite/i) },
+  { id: "holyMoly", group: "Personal", character: "Lucien", icon: "fas fa-bolt-lightning", name: "Holy Moly",
+    tiers: [1], desc: () => "Land a single hit of 60+ damage", value: (c) => (max(c, "max_hit") >= 60 ? 1 : 0) },
+
+  // ── Personal: Felldoh (wild magic sorcerer) ─────────────────────────────
+  { id: "pettingZoo", group: "Personal", character: "Felldoh", icon: "fas fa-paw", name: "Petting Zoo",
+    tiers: [4], desc: () => "Summon every creature a wild magic surge can conjure", value: (c) => distinct(c, "surge_summon") },
+  { id: "offTheCharts", group: "Personal", character: "Felldoh", icon: "fas fa-percent", name: "Off the Charts",
+    tiers: [1], desc: () => "Roll a 01 or a 100 on the wild magic surge table", value: (c) => n(c, "surge_extreme") },
+  { id: "healthAndSafety", group: "Personal", character: "Felldoh", icon: "fas fa-triangle-exclamation", name: "Health and Safety Violation",
+    tiers: [50, 100], desc: (t) => `Cause ${t} wild magic surges`, value: (c) => n(c, "surge") },
+
   // ── Hidden until unlocked ─────────────────────────────────────────────────
   { id: "friendlyFire", group: "Hidden", icon: "fas fa-person-falling-burst", name: "Friendly Fire", hidden: true,
     tiers: [1], desc: () => "Damage a party member", value: (c) => n(c, "friendly_fire") },
   { id: "foundItLikeThat", group: "Hidden", icon: "fas fa-shield-heart", name: "It Was Like That When I Found It", hidden: true,
     tiers: [1], desc: () => "Take no damage from a hit thanks to a resistance or immunity", value: (c) => n(c, "shrugged") },
 ];
+
+// Torin's three are kept unreadable here so his player can't spoil them
+const SEALED = "W3siaWQiOiJjbGVyaWMxIiwiaWNvbiI6ImZhcyBmYS1saW5rIiwibmFtZSI6IlNoYWtlbiwgTm90IFN0aXJyZWQiLCJkZXNjIjoiQ2FzdCBXYXJkaW5nIEJvbmQge3R9IHRpbWVzIiwiY2hhcmFjdGVyIjoiVG9yaW4iLCJ0eXBlIjoidXNlIiwibWF0Y2giOiJeV2FyZGluZyBCb25kIiwidGllcnMiOlsyNV19LHsiaWQiOiJjbGVyaWMyIiwiaWNvbiI6ImZhcyBmYS1maXJlLWZsYW1lLWN1cnZlZCIsIm5hbWUiOiJIb2x5IFNtb2tlcyEiLCJkZXNjIjoiRmluaXNoIG9mZiB7dH0gZW5lbWllcyB3aXRoIFNhY3JlZCBGbGFtZSIsImNoYXJhY3RlciI6IlRvcmluIiwidHlwZSI6ImtpbGwiLCJtYXRjaCI6Il5TYWNyZWQgRmxhbWUiLCJ0aWVycyI6WzEwXX0seyJpZCI6ImNsZXJpYzMiLCJpY29uIjoiZmFzIGZhLWhhbmQtYmFjay1maXN0IiwibmFtZSI6IkhhdmUgWW91IFRyaWVkIEhpdHRpbmcgSXQ/IiwiZGVzYyI6IkZpbmlzaCBvZmYge3R9IGVuZW1pZXMgd2l0aCB5b3VyIHF1YXJ0ZXJzdGFmZiIsImNoYXJhY3RlciI6IlRvcmluIiwidHlwZSI6ImtpbGwiLCJtYXRjaCI6IlF1YXJ0ZXJzdGFmZiIsInRpZXJzIjpbNV19XQ==";
+for (const e of JSON.parse(globalThis.atob ? atob(SEALED) : Buffer.from(SEALED, "base64").toString())) {
+  const re = new RegExp(e.match, "i");
+  ACHIEVEMENTS.push({ id: e.id, group: "Personal", character: e.character, icon: e.icon, name: e.name, tiers: e.tiers,
+    desc: (t) => e.desc.replace("{t}", t), value: (c) => itemN(c, e.type, re) });
+}
 
 export const achievementById = (id) => ACHIEVEMENTS.find(a => a.id === id);
 export const ROMAN = ["", "I", "II", "III", "IV", "V", "VI"];

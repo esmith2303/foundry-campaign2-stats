@@ -1,4 +1,5 @@
 import { uploadEvents, eventsUrlFrom } from "./extract.mjs";
+import { recordedSilently } from "./achievements/Achievements.mjs";
 
 /**
  * StatsUploader
@@ -50,6 +51,7 @@ export class StatsUploader {
 
     // 1. Chat-log events
     const results = collector.chatEvents();
+    const quiet = recordedSilently();   // achievements recorded without a card
     ui.notifications.info(`Stats: uploading rolls from ${results.length} chat message(s)…`);
     try {
       await uploadEvents({
@@ -57,7 +59,7 @@ export class StatsUploader {
         apiKey: game.settings.get(this.#moduleId, "apiKey"),
         worldId: game.world.id,
         worldName: game.world.title,
-        results,
+        results: quiet ? [...results, quiet] : results,
       });
     } catch (e) {
       console.error(`${this.#moduleId} | chat events upload failed:`, e);

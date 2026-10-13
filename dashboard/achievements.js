@@ -75,7 +75,7 @@
     names.forEach(function (n) {
       html += '<div class="panel cabinet"><h2>' + esc(n) + "<span>" + by[n].length + " earned</span></h2>";
       by[n].forEach(function (r) {
-        var tiered = TIERED[r.id];
+        var tiered = r.tiered !== undefined ? r.tiered : TIERED[r.id];
         html += '<div class="trophy"><span class="medal">' + (tiered ? ROMAN[r.tier] || r.tier : STAR) + '</span><span class="tname"><span>' + esc(r.name || r.id) +
           (tiered ? " " + (ROMAN[r.tier] || r.tier) : "") + "</span>" + (r.desc ? '<span class="tdesc">' + esc(r.desc) + "</span>" : "") + '</span><span class="when">' + day(r.last_at) + "</span></div>";
       });
@@ -85,14 +85,26 @@
     place(section);
   }
 
-  // Keep the cabinet at the very bottom, after Shops and Casino
+  // Keep the cabinet just above Shops and Casino, whichever finishes loading first
+  function firstAddOn(content) {
+    var ids = ["shop-section", "casino-section"], first = null;
+    ids.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el && el.parentNode === content && (!first || (el.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING))) first = el;
+    });
+    return first;
+  }
   function place(section) {
     var content = document.getElementById("content");
-    content.appendChild(section);
+    var before = firstAddOn(content);
+    if (before) content.insertBefore(section, before);
+    else content.appendChild(section);
   }
   new MutationObserver(function () {
     var content = document.getElementById("content"), trophy = document.getElementById("trophy-section");
-    if (content && trophy && trophy.parentNode === content && content.lastElementChild !== trophy) content.appendChild(trophy);
+    if (!content || !trophy || trophy.parentNode !== content) return;
+    var before = firstAddOn(content);
+    if (before && trophy.nextElementSibling !== before) content.insertBefore(trophy, before);
   }).observe(document.body, { childList: true, subtree: true });
 
   var original = loadDashboard;

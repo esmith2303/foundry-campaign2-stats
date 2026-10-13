@@ -271,8 +271,13 @@ in the module settings ("Achievements"). The dashboard shows them in a
 - **Streaks and moments** (two 20s in a row, five misses in a row…) are found
   in the chat log in order.
 - What's been awarded is saved in the world (hidden setting
-  `achievementStore`), so nothing is announced twice. The very first run posts
-  one "Trophy cabinet" card per character with everything already earned.
+  `achievementStore`), so nothing is announced twice.
+- **The first run is silent.** Everything already earned when achievements
+  are switched on is recorded with no cards and no note, so the first card is
+  a surprise for everyone, GM included. Those earlier achievements still go
+  to the dashboard's Trophy Cabinet with the next stats upload. If the stats
+  server can't be reached, it waits and tries again each minute rather than
+  recording half the picture.
 - **Death saves stay secret.** Natural 20s / 1s on death saves don't count
   towards Tymora / Cursed Bones, and the Death Dodger card is whispered to the
   GM and that character's player only. When the party finds out, the GM can
@@ -281,12 +286,30 @@ in the module settings ("Achievements"). The dashboard shows them in a
 - Casino moments (blackjacks, split wins, single numbers, lizards) count for
   rounds played on 1.9.0 or later.
 
+- **Personal achievements.** Each character also has three of their own that
+  only they can earn (`character` in the catalog). One set is stored encoded so
+  its player can't spoil it by reading the code.
+- **New achievements added in an update** that a character has already earned
+  are recorded silently too, so only new progress gets a card.
 - **Nothing is listed until someone earns it.** Players only ever see
   achievements on unlock cards and in the dashboard's Trophy Cabinet, so one
   nobody has earned stays unknown. That's why they aren't listed in this
   README.
 
 Names, wording and thresholds live in `scripts/achievements/catalog.mjs`.
+
+The dashboard's Trophy Cabinet is `dashboard/achievements.js`: copy it next to
+`index.html` and add `<script src="achievements.js"></script>` after the other
+add-on scripts.
+
+## Wild magic
+
+Wild magic surges are picked up from the chat log: a d100 roll-table draw by a
+player counts as a surge for their character. When the d100 is 05–08 (a
+friendly creature appears), the player's next d4 says which creature; a 4 is a
+unicorn. `dashboard/wild-magic.js` adds a **Unicorns Summoned** card to the
+stats row at the top of the dashboard, installed like the others:
+`<script src="wild-magic.js"></script>`.
 
 ## Backfilling / correcting from a chat export
 

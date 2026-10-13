@@ -11,22 +11,29 @@
 import { extractMessage, keptD20s, actorIdFromUuid, readHpEntry, MODULE_ID } from "../extract.mjs";
 import { ACHIEVEMENTS } from "./catalog.mjs";
 
-export const emptyCounters = () => ({ types: {}, shop: { spentCp: 0, items: 0, haggles: 0 } });
+export const emptyCounters = () => ({ types: {}, items: {}, shop: { spentCp: 0, items: 0, haggles: 0 } });
 
-function addType(c, type, amount, count = 1) {
-  const t = (c.types[type] ??= { n: 0, sum: 0, max: 0 });
+// Per-item totals are kept for these (e.g. kills with a javelin, spells cast)
+export const ITEM_TYPES = ["use", "kill", "surge_summon"];
+
+function bump(t, amount, count) {
   t.n += count;
   t.sum += Number(amount) || 0;
   t.max = Math.max(t.max, Number(amount) || 0);
+}
+function addType(c, type, amount, item = null, count = 1) {
+  bump((c.types[type] ??= { n: 0, sum: 0, max: 0 }), amount, count);
+  if (item && ITEM_TYPES.includes(type)) bump(((c.items[type] ??= {})[item] ??= { n: 0, sum: 0, max: 0 }), amount, count);
 }
 
 /**
  * Everything the engine needs from one chat message (cache it by message id).
  * ctx is the extractor's: { isPlayerCharacter, actorName, canUserAct?, resolveActorId? }
+ * link is buildLinks()'s for this message (which item an HP card was, a surge's d4…)
  */
-export function analyseMessage(m, ctx) {
+export function analyseMessage(m, ctx, link = {}) {
   const id = m.id ?? m._id;
-  const res = extractMessage(m, ctx);
+  const res = extractMessage(m, ctx, link.itemFor ?? null, link);
   const midi = m.flags?.["midi-qol"];
   const hp = [];
   if (Array.isArray(midi?.undoDamage)) {
@@ -51,9 +58,10 @@ export function analyseMessage(m, ctx) {
  * @param p.sessions   upload times (ms, ascending) — the ends of past sessions
  * @param p.party      actor ids to score
  * @param p.isParty    (actorId) → bool
+ * @param p.nameOf     (actorId) → name (for personal achievements)
  * @returns { [actorId]: { counters, seq: Set, earned: { achId: { value, tier } } } }
  */
-export function evaluate({ items, baseline = null, sessions = [], party = [], isParty = (id) => party.includes(id) }) {
+export function evaluate({ items, baseline = null, sessions = [], party = [], isParty = (id) => party.includes(id), nameOf = () => null }) {
   const cutoff = baseline?.cutoff ? Number(baseline.cutoff) : -Infinity;
   const counters = Object.fromEntries(party.map(id => [id, mergeBaseline(baseline?.actors?.[id])]));
   const seq = Object.fromEntries(party.map(id => [id, new Set()]));
@@ -62,7 +70,7 @@ export function evaluate({ items, baseline = null, sessions = [], party = [], is
   // ── Lifetime counters: the server's up to the last upload, the chat log after it
   for (const it of sorted) {
     if (it.ts <= cutoff) continue;
-    for (const o of it.outcomes) if (counters[o.actorId]) addType(counters[o.actorId], o.type, o.amount);
+    for (const o of it.outcomes) if (counters[o.actorId]) addType(counters[o.actorId], o.type, o.amount, o.item);
     for (const pu of it.purchases) {
       const c = counters[pu.actorId];
       if (!c || pu.kind !== "buy") continue;
@@ -141,7 +149,9 @@ export function evaluate({ items, baseline = null, sessions = [], party = [], is
   for (const id of party) {
     const earned = {};
     for (const a of ACHIEVEMENTS) {
-      const value = Number(a.value(counters[id], seq[id])) || 0;
+      // Personal achievements only count for their own character
+      const mine = !a.character || String(nameOf(id) ?? "").toLowerCase().startsWith(a.character.toLowerCase());
+      const value = mine ? Number(a.value(counters[id], seq[id])) || 0 : 0;
       earned[a.id] = { value, tier: a.tiers.filter(t => value >= t).length };
     }
     out[id] = { counters: counters[id], seq: seq[id], earned };
@@ -152,7 +162,12 @@ export function evaluate({ items, baseline = null, sessions = [], party = [], is
 function mergeBaseline(b) {
   const c = emptyCounters();
   if (!b) return c;
-  for (const [type, t] of Object.entries(b.types ?? {})) c.types[type] = { n: Number(t.n) || 0, sum: Number(t.sum) || 0, max: Number(t.max) || 0 };
+  const num = (t) => ({ n: Number(t?.n) || 0, sum: Number(t?.sum) || 0, max: Number(t?.max) || 0 });
+  for (const [type, t] of Object.entries(b.types ?? {})) c.types[type] = num(t);
+  for (const [type, byItem] of Object.entries(b.items ?? {})) {
+    c.items[type] = {};
+    for (const [item, t] of Object.entries(byItem ?? {})) c.items[type][item] = num(t);
+  }
   c.shop.spentCp = Number(b.shop?.spentCp) || 0;
   c.shop.items = Number(b.shop?.items) || 0;
   c.shop.haggles = Number(b.shop?.haggles) || 0;

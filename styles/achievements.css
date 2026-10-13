@@ -54,3 +54,4 @@
 }
 .qa-ach-card .qa-ach-reveal:hover:not(:disabled) { background: rgba(167,127,214,.35); }
 .qa-ach-card .qa-ach-reveal:disabled { opacity: .5; cursor: wait; }
+
