@@ -1,6 +1,6 @@
 /**
  * The casino window, drawn on every client from the dealer's public state.
- * Bets being built (chips not yet placed) live only here, in `draft`, so other
+ * Bets being built (stakes not yet placed) live only here, in `draft`, so other
  * players' clicks re-rendering the window never wipe them.
  */
 import { escapeHtml, partyCharacters } from "../abilities/shared.mjs";
@@ -9,53 +9,44 @@ import { formatCp } from "../shop/currency.mjs";
 import * as R from "./rules.mjs";
 import { act, GAMES, gameName, MIN_BET_CP } from "./Casino.mjs";
 
-let win = null;            // { frame, body, close, isClosed }
-let dismissed = false;     // closed with ✕ — shows the "back to the casino" button instead
-let shownKey = null;       // lobby / which game: a new one brings the window back
+let win = null;            // { frame, body, close, isClosed, hide, show, isHidden }
+let shownKey = null;       // lobby / which game: a new one brings a tucked-away window back
 let last = null;           // last state rendered
 const seenCards = new Set();
 const seenHidden = new Set();
-const draft = { chip: 100, bj: {}, roulette: {}, lizards: {}, as: null, round: null };
+// Bets being built: stake = gold per click on the board (roulette / lizards); bj = each blackjack bet
+const draft = { stake: 100, bj: {}, roulette: {}, lizards: {}, as: null, round: null };
 let busy = false;
 
-const CHIPS = [1, 5, 10, 25, 100].map(gp => gp * 100);
+const COIN_STEPS = [1, 10, 25, 100];
 const SUIT = { S: "♠", H: "♥", D: "♦", C: "♣" };
 const RANK = { T: "10" };
 
 // ── Window ───────────────────────────────────────────────────────────────────
 
 export function closeCasinoWindow() {
-  last = null; shownKey = null; dismissed = false;
-  document.getElementById("cz-pill")?.remove();
-  if (win && !win.isClosed()) { win._closing = true; win.close(); }
+  last = null; shownKey = null;
+  if (win && !win.isClosed()) win.close();
   win = null;
 }
 
+/** GM's toolbar button / anyone's dock button: bring the window back. */
 export function showCasinoWindow(state = last) {
-  dismissed = false;
-  document.getElementById("cz-pill")?.remove();
+  if (win && !win.isClosed() && win.isHidden()) win.show();
   if (state) renderCasino(state);
 }
 
-function ensureWindow() {
+function ensureWindow(state) {
   if (win && !win.isClosed()) return win;
   const width = Math.min(1060, window.innerWidth - 24);
+  // ✕ only tucks the casino into the "Back to …" dock; it stays open until the GM closes it
   win = openPopup({
     id: "cz-casino", floating: true, className: "cz-dialog", width: `${width}px`,
     left: Math.max(12, (window.innerWidth - width) / 2), top: Math.max(12, window.innerHeight * 0.04),
-    onClose: () => { if (!win?._closing && last?.open) { dismissed = true; showPill(); } win = null; },
+    stash: { label: () => last?.name ?? state?.name ?? "the casino", icon: "fas fa-dice" },
+    onClose: () => { win = null; },
   });
   return win;
-}
-
-function showPill() {
-  if (document.getElementById("cz-pill")) return;
-  const pill = document.createElement("button");
-  pill.id = "cz-pill";
-  pill.type = "button";
-  pill.innerHTML = `<i class="fas fa-dice"></i> Back to ${escapeHtml(last?.name ?? "the casino")}`;
-  pill.addEventListener("click", () => showCasinoWindow());
-  document.body.appendChild(pill);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -68,18 +59,35 @@ const gp = (cp) => formatCp(cp);
 const signed = (cp) => `${cp > 0 ? "+" : cp < 0 ? "−" : "±"}${formatCp(Math.abs(cp))}`;
 const portrait = (id, cls = "") => `<img class="cz-portrait ${cls}" src="${escapeHtml(imgOf(id))}" alt="">`;
 
-function chipHtml(cp, extra = "") {
+/** A little pile of gold coins with the amount on it (taller for bigger stakes). */
+function coinHtml(cp, extra = "") {
   const v = cp / 100;
-  const tier = v >= 100 ? "c100" : v >= 25 ? "c25" : v >= 10 ? "c10" : v >= 5 ? "c5" : "c1";
-  return `<span class="cz-chip ${tier} ${extra}">${v >= 1000 ? `${Math.round(v / 100) / 10}k` : +v.toFixed(2)}</span>`;
+  const height = v >= 100 ? 4 : v >= 25 ? 3 : v >= 10 ? 2 : 1;
+  const label = v >= 1000 ? `${Math.round(v / 100) / 10}k` : +v.toFixed(2);
+  return `<span class="cz-coins h${height} ${extra}" title="${gp(cp)}"><span class="cz-coin-top">${label}</span></span>`;
 }
-/** Chip rack. With `addTo` (blackjack) a chip goes straight onto that bet; otherwise it's the chip you place with. */
-function chipRack(state, addTo = null) {
-  const chips = CHIPS.filter(c => c <= state.maxBetCp);
-  if (!chips.includes(draft.chip)) draft.chip = chips[0];
-  return `<div class="cz-rack">${chips.map(c => addTo
-    ? `<button type="button" class="cz-rack-chip" data-bj-chip="${c}" data-actor="${addTo}" title="Add ${gp(c)}">${chipHtml(c)}</button>`
-    : `<button type="button" class="cz-rack-chip${c === draft.chip ? " on" : ""}" data-chip="${c}" title="Bet with ${gp(c)} chips">${chipHtml(c)}</button>`).join("")}</div>`;
+/**
+ * Stake picker: type an amount, or add +1 / +10 / +25 / +100 gp coins.
+ * key "bj:<actorId>" sets that blackjack bet; "stake" sets the gold placed per click on the board.
+ */
+function stakeHtml(state, key, cp, hint = "") {
+  const max = state.maxBetCp / 100;
+  return `
+    <div class="cz-stake-picker">
+      <label class="cz-stake-field"><span class="cz-coins h2"><span class="cz-coin-top">gp</span></span>
+        <input type="number" class="cz-stake-input" data-stake="${key}" min="0" max="${max}" step="1" value="${cp ? +(cp / 100).toFixed(2) : ""}" placeholder="0">
+        <span class="cz-stake-unit">gp</span></label>
+      <div class="cz-coin-btns">${COIN_STEPS.filter(n => n <= max).map(n => `<button type="button" class="cz-coin-btn" data-stake-add="${key}" data-gp="${n}" title="Add ${n} gp">+${n}</button>`).join("")}
+        ${key === "stake" ? "" : `<button type="button" class="cz-btn small ghost" data-stake-clear="${key}"${cp ? "" : " disabled"}>Clear</button>`}</div>
+      ${hint ? `<div class="cz-note">${hint}</div>` : ""}
+    </div>`;
+}
+const stakeOf = (key) => key === "stake" ? draft.stake : draft.bj[key.slice(3)] ?? 0;
+function setStake(key, cp, maxCp) {
+  cp = Math.max(0, Math.min(maxCp, Math.round(cp)));
+  if (key === "stake") draft.stake = cp;
+  else if (cp) draft.bj[key.slice(3)] = cp;
+  else delete draft.bj[key.slice(3)];
 }
 
 async function send(payload) {
@@ -93,13 +101,16 @@ async function send(payload) {
 export function renderCasino(state) {
   last = state;
   const key = state.phase === "table" ? `t${state.qi}:${state.table?.game}` : "lobby";
-  if (key !== shownKey) { shownKey = key; dismissed = false; document.getElementById("cz-pill")?.remove(); }
+  const w = ensureWindow(state);
+  // A new game (or the lobby) brings a tucked-away window back for everyone to watch
+  if (key !== shownKey) { shownKey = key; if (w.isHidden()) w.show(); }
   const roundKey = state.table ? `${key}:${state.table.round}` : key;
   if (draft.round !== roundKey) { draft.round = roundKey; draft.bj = {}; draft.roulette = {}; draft.lizards = {}; }
-  if (dismissed) return showPill();
 
-  const w = ensureWindow();
   const body = w.body;
+  // Someone typing a stake keeps their cursor when another player's move redraws the window
+  const typing = document.activeElement?.closest?.("#cz-casino") ? document.activeElement : null;
+  const focusKey = typing?.dataset?.stake, caret = typing?.selectionStart;
   // Keep a running wheel or race across re-renders
   const keep = body.querySelector("[data-keep]");
   keep?.remove();
@@ -122,6 +133,10 @@ export function renderCasino(state) {
   }
   updateStage(body.querySelector("[data-keep]"), state);
   bind(body, state);
+  if (focusKey) {
+    const input = body.querySelector(`[data-stake="${focusKey}"]`);
+    if (input) { input.value = typing.value; input.focus(); try { input.setSelectionRange(caret, caret); } catch {} }
+  }
 }
 
 // ── GM bar ───────────────────────────────────────────────────────────────────
@@ -293,7 +308,7 @@ function blackjackHtml(state, t) {
       return `
         <div class="cz-bj-hand${active ? " active" : ""}">
           <div class="cz-hand">${h.cards.map(cardHtml).join("")}</div>
-          <div class="cz-hand-foot">${h.cards.length ? `<span class="cz-total">${totalText(h.cards)}</span>` : ""}<span class="cz-stake">${chipHtml(h.betCp)}${h.doubled ? " doubled" : ""}</span>${res}</div>
+          <div class="cz-hand-foot">${h.cards.length ? `<span class="cz-total">${totalText(h.cards)}</span>` : ""}<span class="cz-stake">${coinHtml(h.betCp)}${h.doubled ? " doubled" : ""}</span>${res}</div>
         </div>`;
     }).join("");
     const ins = s.insuranceCp ? `<div class="cz-ins">Insurance ${gp(s.insuranceCp)}</div>` : s.insurance === false && t.phase === "insurance" ? `<div class="cz-ins cz-dim">No insurance</div>` : "";
@@ -308,10 +323,8 @@ function blackjackControls(state, t, id, s) {
     const bet = draft.bj[id] ?? 0;
     return `
       <div class="cz-controls">
-        ${chipRack(state, id)}
-        <div class="cz-bet-line">Bet: <b>${bet ? gp(bet) : "— click chips to bet"}</b>
-          <button type="button" class="cz-btn small ghost" data-bj-clear="${id}"${bet ? "" : " disabled"}>Clear</button></div>
-        <div class="cz-row"><button type="button" class="cz-btn primary" data-bj-bet="${id}"${bet >= MIN_BET_CP ? "" : " disabled"}>Place bet</button>
+        ${stakeHtml(state, `bj:${id}`, bet)}
+        <div class="cz-row"><button type="button" class="cz-btn primary" data-bj-bet="${id}"${bet >= MIN_BET_CP ? "" : " disabled"}>Place bet${bet ? ` (${gp(bet)})` : ""}</button>
           <button type="button" class="cz-btn ghost" data-sitout="${id}">Sit out</button></div>
       </div>`;
   }
@@ -372,11 +385,10 @@ function rouletteHtml(state, t) {
   const controls = mineBetting ? `
     <div class="cz-controls">
       ${asPicker(t, ids)}
-      ${chipRack(state)}
-      <div class="cz-note">Click the board to put a chip down; right-click to take one back.</div>
+      ${stakeHtml(state, "stake", draft.stake, `Click the board to put ${draft.stake ? gp(draft.stake) : "your stake"} down; right-click to take it back.`)}
       <div class="cz-row">
         <button type="button" class="cz-btn primary" data-rl-place${draftTotal ? "" : " disabled"}>Place bets (${gp(draftTotal)})</button>
-        <button type="button" class="cz-btn ghost" data-rl-clear${draftTotal ? "" : " disabled"}>Clear</button>
+        <button type="button" class="cz-btn ghost" data-rl-clear${draftTotal ? "" : " disabled"}>Clear my bets</button>
         <button type="button" class="cz-btn ghost" data-sitout="${draft.as}">Sit out</button>
       </div>
     </div>` : "";
@@ -448,14 +460,14 @@ function lizardsHtml(state, t) {
           ${b.length ? `<div class="cz-backers">${b.map(x => `<span class="cz-betpill">${escapeHtml(nameOf(x.id))} ${gp(x.cp)}</span>`).join("")}</div>` : ""}
         </div>
         <div class="cz-odds">${R.oddsText(L.odds)}</div>
-        ${ids.length ? `<div class="cz-runner-bet">${mineCp ? `<span class="cz-stake">${chipHtml(mineCp)}</span>` : ""}<button type="button" class="cz-btn small" data-lz-add="${L.id}">＋ chip</button>${mineCp ? `<button type="button" class="cz-btn small ghost" data-lz-clear="${L.id}">✕</button>` : ""}</div>` : ""}
+        ${ids.length ? `<div class="cz-runner-bet">${mineCp ? `<span class="cz-stake">${coinHtml(mineCp)}</span>` : ""}<button type="button" class="cz-btn small" data-lz-add="${L.id}"${draft.stake ? "" : " disabled"}>＋ ${draft.stake ? gp(draft.stake) : "stake"}</button>${mineCp ? `<button type="button" class="cz-btn small ghost" data-lz-clear="${L.id}">✕</button>` : ""}</div>` : ""}
       </div>`;
   }).join("");
   const draftTotal = Object.values(myDraft).reduce((a, b) => a + b, 0);
   const controls = ids.length ? `
     <div class="cz-controls">
       ${asPicker(t, ids)}
-      ${chipRack(state)}
+      ${stakeHtml(state, "stake", draft.stake, "Set a stake, then back as many lizards as you like.")}
       <div class="cz-row">
         <button type="button" class="cz-btn primary" data-lz-place${draftTotal ? "" : " disabled"}>Place bets (${gp(draftTotal)})</button>
         <button type="button" class="cz-btn ghost" data-sitout="${draft.as}">Sit out</button>
@@ -595,7 +607,14 @@ function bind(body, state) {
   const t = state.table;
   body.querySelectorAll("[data-gm]").forEach(b => b.addEventListener("click", async () => {
     const type = b.dataset.gm;
-    if (type === "close" && !(await confirmClose())) return;
+    // Closing asks twice, right here (a Foundry dialog would open behind the casino)
+    if (type === "close" && !b.classList.contains("armed")) {
+      const owed = state.table && state.table.phase !== "done";
+      b.classList.add("armed");
+      b.innerHTML = `<i class="fas fa-door-closed"></i> Click again to close for everyone${owed ? " (bets handed back)" : ""}`;
+      setTimeout(() => { if (b.isConnected && b.classList.contains("armed")) { b.classList.remove("armed"); b.innerHTML = '<i class="fas fa-door-closed"></i> Close the casino'; } }, 4000);
+      return;
+    }
     b.disabled = true;
     await send({ type });
   }));
@@ -606,18 +625,32 @@ function bind(body, state) {
   body.querySelectorAll("[data-gm-pick]").forEach(sel => sel.addEventListener("change", () => {
     if (sel.value) send({ type: "pick", actorId: sel.value, game: sel.dataset.gmPick });
   }));
-  body.querySelectorAll("[data-chip]").forEach(b => b.addEventListener("click", () => { draft.chip = Number(b.dataset.chip); renderCasino(last); }));
+  // Stakes: type an amount or add coins
+  body.querySelectorAll("[data-stake-add]").forEach(b => b.addEventListener("click", () => {
+    const key = b.dataset.stakeAdd, next = stakeOf(key) + Number(b.dataset.gp) * 100;
+    if (next > state.maxBetCp) ui.notifications.warn(`The table limit is ${gp(state.maxBetCp)}.`);
+    setStake(key, next, state.maxBetCp);
+    renderCasino(last);
+  }));
+  body.querySelectorAll("[data-stake-clear]").forEach(b => b.addEventListener("click", () => { setStake(b.dataset.stakeClear, 0, state.maxBetCp); renderCasino(last); }));
+  body.querySelectorAll("[data-stake]").forEach(input => {
+    const key = input.dataset.stake;
+    input.addEventListener("input", () => {
+      setStake(key, (Number(input.value) || 0) * 100, state.maxBetCp);
+      // keep typing: just refresh the blackjack button rather than redrawing everything
+      const bet = body.querySelector(`[data-bj-bet="${key.slice(3)}"]`);
+      if (bet) { const cp = stakeOf(key); bet.disabled = cp < MIN_BET_CP; bet.textContent = cp ? `Place bet (${gp(cp)})` : "Place bet"; }
+    });
+    input.addEventListener("change", () => {
+      if ((Number(input.value) || 0) * 100 > state.maxBetCp) ui.notifications.warn(`The table limit is ${gp(state.maxBetCp)}.`);
+      setStake(key, (Number(input.value) || 0) * 100, state.maxBetCp);
+      renderCasino(last);
+    });
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") input.blur(); });
+  });
   body.querySelectorAll("[data-sitout]").forEach(b => b.addEventListener("click", () => send({ type: "sitout", actorId: b.dataset.sitout })));
   body.querySelectorAll("[data-as]").forEach(sel => sel.addEventListener("change", () => { draft.as = sel.value; renderCasino(last); }));
   // Blackjack
-  body.querySelectorAll("[data-bj-chip]").forEach(b => b.addEventListener("click", () => {
-    const id = b.dataset.actor;
-    const next = (draft.bj[id] ?? 0) + Number(b.dataset.bjChip);
-    if (next > state.maxBetCp) return ui.notifications.warn(`The table limit is ${gp(state.maxBetCp)}.`);
-    draft.bj[id] = next;
-    renderCasino(last);
-  }));
-  body.querySelectorAll("[data-bj-clear]").forEach(b => b.addEventListener("click", () => { delete draft.bj[b.dataset.bjClear]; renderCasino(last); }));
   body.querySelectorAll("[data-bj-bet]").forEach(b => b.addEventListener("click", async () => {
     const id = b.dataset.bjBet;
     b.disabled = true;
@@ -634,11 +667,12 @@ function bind(body, state) {
     const key = R.rouletteKey(bet);
     c.addEventListener("click", () => {
       if (!draft.as) return;
+      if (draft.stake < MIN_BET_CP) return ui.notifications.warn("Set your stake first (at least 1 gp).");
       const list = draft.roulette[draft.as] ??= [];
       const total = list.reduce((a, b) => a + b.cp, 0);
-      if (total + draft.chip > state.maxBetCp) return ui.notifications.warn(`The table limit is ${gp(state.maxBetCp)} a spin.`);
+      if (total + draft.stake > state.maxBetCp) return ui.notifications.warn(`The table limit is ${gp(state.maxBetCp)} a spin.`);
       const existing = list.find(b => R.rouletteKey(b) === key);
-      if (existing) existing.cp += draft.chip; else list.push({ ...bet, cp: draft.chip });
+      if (existing) existing.cp += draft.stake; else list.push({ ...bet, cp: draft.stake });
       renderCasino(last);
     });
     c.addEventListener("contextmenu", (e) => {
@@ -646,7 +680,7 @@ function bind(body, state) {
       const list = draft.roulette[draft.as];
       const existing = list?.find(b => R.rouletteKey(b) === key);
       if (!existing) return;
-      existing.cp -= draft.chip;
+      existing.cp -= Math.max(MIN_BET_CP, draft.stake);
       if (existing.cp < MIN_BET_CP) list.splice(list.indexOf(existing), 1);
       renderCasino(last);
     });
@@ -663,8 +697,9 @@ function bind(body, state) {
     if (!draft.as) return;
     const d = draft.lizards[draft.as] ??= {};
     const total = Object.values(d).reduce((a, x) => a + x, 0);
-    if (total + draft.chip > state.maxBetCp) return ui.notifications.warn(`The table limit is ${gp(state.maxBetCp)} a race.`);
-    d[b.dataset.lzAdd] = (d[b.dataset.lzAdd] ?? 0) + draft.chip;
+    if (draft.stake < MIN_BET_CP) return ui.notifications.warn("Set your stake first (at least 1 gp).");
+    if (total + draft.stake > state.maxBetCp) return ui.notifications.warn(`The table limit is ${gp(state.maxBetCp)} a race.`);
+    d[b.dataset.lzAdd] = (d[b.dataset.lzAdd] ?? 0) + draft.stake;
     renderCasino(last);
   }));
   body.querySelectorAll("[data-lz-clear]").forEach(b => b.addEventListener("click", () => { delete draft.lizards[draft.as]?.[b.dataset.lzClear]; renderCasino(last); }));
@@ -674,13 +709,5 @@ function bind(body, state) {
     const bets = Object.entries(draft.lizards[id] ?? {}).map(([lizard, cp]) => ({ lizard, cp }));
     if (await send({ type: "bets", actorId: id, bets })) delete draft.lizards[id];
     renderCasino(last);
-  });
-}
-
-async function confirmClose() {
-  const owed = last?.table && last.table.phase !== "done";
-  return Dialog.confirm({
-    title: "Close the casino",
-    content: `<p>Close ${escapeHtml(last?.name ?? "the casino")} for everyone?${owed ? " Bets on the table are handed back." : ""}</p>`,
   });
 }

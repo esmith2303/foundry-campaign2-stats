@@ -172,12 +172,12 @@ in a tavern-styled window everyone sees.
 2. **The night.** The GM presses *Open the tables*. The chosen games are played
    one at a time, in lobby order (Blackjack → Roulette → Lizard Races), with
    everyone watching. Characters who chose the same game share the table, each
-   with their own bets. A player who closes the window gets a "Back to the
-   casino" button, and the window comes back by itself when the next game
+   with their own bets. A player who closes the window finds it in the "Back
+   to …" dock (see below), and it comes back by itself when the next game
    starts.
 3. **After each round** the GM picks *Another round*, *Next: …* or *Lobby*.
-   *Close the casino* ends the night. Ending or leaving a round early hands
-   every stake back (with a chat note).
+   *Close the casino* (click twice) ends the night. Ending or leaving a round
+   early hands every stake back (with a chat note).
 
 The GM also gets a hurry-along button: *Deal / Spin / Start the race now*
 (anyone who hasn't bet sits out), *No more insurance*, and *Stand for …* (for
@@ -185,9 +185,13 @@ a player who's gone quiet).
 
 | Game | Rules |
 |---|---|
-| Blackjack | 6-deck shoe (reshuffled at the cut card, carried between rounds). Dealer stands on all 17s and peeks for blackjack. Blackjack pays 3:2. Double on any first two cards (also after a split). Split any two cards of the same value, up to 4 hands; split aces get one card each, and 21 on a split hand isn't a blackjack. Insurance (half the bet) when the dealer shows an ace pays 2:1. Click chips to build a bet. |
-| Roulette | European single zero. Pick a chip, click the board to place it, right-click to take it back. Numbers pay 35:1, dozens and columns 2:1, red/black, odd/even and 1–18/19–36 evens. Zero loses every outside bet. The wheel spins for about 7 seconds and stops on the same number on every screen. |
+| Blackjack | 6-deck shoe (reshuffled at the cut card, carried between rounds). Dealer stands on all 17s and peeks for blackjack. Blackjack pays 3:2. Double on any first two cards (also after a split). Split any two cards of the same value, up to 4 hands; split aces get one card each, and 21 on a split hand isn't a blackjack. Insurance (half the bet) when the dealer shows an ace pays 2:1. |
+| Roulette | European single zero. Set your stake, click the board to place it, right-click to take it back. Numbers pay 35:1, dozens and columns 2:1, red/black, odd/even and 1–18/19–36 evens. Zero loses every outside bet. The wheel spins for about 7 seconds and stops on the same number on every screen. |
 | Lizard Races | Four lizards are drawn from a stable of ten, each with hidden speed, consistency and finishing kick. The odds come from simulating that exact field 3,000 times, less the house's cut (about 12%), so favourites really do win more often. Each lizard's last six finishes show as its form. Back one or more lizards to win. The race lasts about 6–7 seconds, is the same on every screen, and calls the lead changes. |
+
+**Betting.** Bets are gold, not chips: type a stake or add +1 / +10 / +25 /
++100 gp coins. At blackjack the stake is your bet; at roulette and the races
+it's what each click puts down.
 
 **Money.** Bets come straight off the character sheet when they're placed, and
 winnings are paid back when the round settles. All of it happens on the GM's
@@ -209,6 +213,20 @@ player, rounds by game, each player's record and favourite game, and recent
 rounds. API: `GET /api/casino-stats?session=…`. Install
 `dashboard/casino.js` like shops.js: `<script src="casino.js"></script>`, after
 shops.js.
+
+## "Back to …" dock
+
+Windows that matter mid-activity don't vanish when closed by accident. ✕,
+Escape or a click outside tucks them into a button at the bottom of the screen
+("Back to The Gilded Flagon (Marta)"), with everything in them kept: quantities,
+typed prices, an offer waiting for the GM, casino bets. This covers:
+
+- **Shop visits.** The dock button's own ✕ leaves the shop for good (and
+  withdraws an offer still waiting).
+- **The GM's haggle / sale offers.** Closing one no longer refuses the offer;
+  it waits in the dock until answered.
+- **The casino.** It stays in the dock until the GM closes the casino, and comes
+  back by itself when the next game starts.
 
 ## Combat recap
 

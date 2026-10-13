@@ -24,6 +24,7 @@ import { COIN_CP, DENOMS, toCp, walletCp, formatCp, pay, receive } from "./curre
 import { rollPersuasion, sendOffer, answerCounter, cancelOffer, configureHaggle, handleHaggleSocket } from "./haggle.mjs";
 import { detailsHtml, bindDetails, applyDetails, validateItem } from "./itemDetails.mjs";
 import { addWindowControls } from "../windowControls.mjs";
+import { makeStashable } from "../windowDock.mjs";
 
 const SOCKET = `module.${MODULE_ID}`;
 export const SHOP_TOOL = "stats-shop";
@@ -158,8 +159,10 @@ async function shopFolder() {
  * floating: no dark backdrop and clicks pass through around the panel, so the
  * GM can drag from compendium windows. The title bar moves the panel.
  */
-function openShell({ floating }) {
-  document.getElementById("qa-shop-overlay")?.remove();
+/** stash: { label, icon, discard } → closing tucks it into the "Back to …" dock (windowDock.mjs). */
+function openShell({ floating, stash = null }) {
+  const old = document.getElementById("qa-shop-overlay");
+  old?._qaClose ? old._qaClose() : old?.remove();
   const overlay = document.createElement("div");
   overlay.id = "qa-shop-overlay";
   if (floating) overlay.classList.add("qa-floating");
@@ -174,17 +177,21 @@ function openShell({ floating }) {
   requestAnimationFrame(() => overlay.classList.add("shown"));
 
   const onClose = [];   // cleanup to run when the panel closes (e.g. the compendium window)
+  const dock = stash ? makeStashable({ overlay, ...stash }) : null;
+  const dismiss = () => (dock ? dock.hide() : close());
   const onKey = (e) => {
-    if (e.key === "Escape" && !frame._qaWin?.minimised && !e.target.closest?.("input, select, textarea")) close();
+    if (e.key === "Escape" && !dock?.hidden && !frame._qaWin?.minimised && !e.target.closest?.("input, select, textarea")) dismiss();
   };
   function close() {
+    dock?.remove();
     onClose.splice(0).forEach(f => { try { f(); } catch {} });
     document.removeEventListener("keydown", onKey);
     overlay.classList.remove("shown");
     setTimeout(() => overlay.remove(), 200);
   }
   document.addEventListener("keydown", onKey);
-  if (!floating) overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
+  if (!floating) overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) dismiss(); });
+  overlay._qaClose = close;
 
   if (floating) {
     // Set in code so no stylesheet can bring the dark backdrop back: the
@@ -206,8 +213,8 @@ function openShell({ floating }) {
       e.preventDefault();
     });
   }
-  addWindowControls({ frame, overlay, close });
-  return { overlay, dialog, close, onClose };
+  addWindowControls({ frame, overlay, close: dismiss });
+  return { overlay, dialog, close, onClose, dock };
 }
 
 // ── Compendium helper (GM editor) ────────────────────────────────────────────
@@ -554,7 +561,12 @@ function openVisit(shop) {
   const casters = castersForUser();
   if (!shop || (!game.user.isGM && !casters.length)) return;   // not in the party → nothing to show
   if (!casters.length) return ui.notifications.warn("No player characters to shop with.");
-  const { dialog, close } = openShell({ floating: false });
+  // Closed by accident (✕, Escape, a click outside)? It waits in the "Back to …" dock,
+  // offers and all. The dock button's ✕ leaves the shop for good.
+  const { dialog, close } = openShell({ floating: false, stash: {
+    label: shopLabel(shop), icon: "fas fa-store",
+    discard: () => { if (pending) cancelOffer(pending.id); close(); },
+  } });
   const isGM = game.user.isGM;
   let buyer = (game.user.character && casters.includes(game.user.character)) ? game.user.character : casters[0];
   let tab = "buy";

@@ -114,7 +114,9 @@ function showOffer(offer) {
   const user = game.users.get(offer.userId);
   const left = Math.max(10, window.innerWidth - 560 - (stagger % 4) * 24), top = 70 + (stagger % 4) * 24;
   stagger++;
+  // Closing it by accident doesn't refuse the offer: it waits in the "Back to …" dock until answered
   const popup = openPopup({ id: `qa-offer-${offer.id}`, floating: true, className: "qa-offer-dialog", left, top,
+    stash: { label: `${offer.actorName}'s ${offer.kind === "sell" ? "sale offer" : "haggle"}`, icon: "fas fa-comments-dollar" },
     onClose: () => { if (open.has(offer.id)) { open.delete(offer.id); reply(offer, "refused", { message: "The shopkeeper isn't interested." }); } } });
   const entry = { offer, popup, counterLines: null };
   open.set(offer.id, entry);

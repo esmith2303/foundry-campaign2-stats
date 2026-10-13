@@ -7,10 +7,15 @@
  *              any element with class "qa-drag-handle"; placed at { left, top }
  *
  * Content goes into `body` (re-rendering it keeps the window controls).
+ *
+ *   stash: { label, icon, discard? } → ✕ / Escape / a click outside tuck the
+ *          window into the "Back to …" dock instead of closing it (see
+ *          windowDock.mjs); only close() really closes it.
  */
 import { addWindowControls } from "./windowControls.mjs";
+import { makeStashable } from "./windowDock.mjs";
 
-export function openPopup({ id, floating = false, className = "", left, top, width, onClose } = {}) {
+export function openPopup({ id, floating = false, className = "", left, top, width, onClose, stash = null } = {}) {
   if (id) document.getElementById(`${id}-overlay`)?.remove();
   const overlay = document.createElement("div");
   overlay.className = "qa-popup-overlay";
@@ -26,12 +31,15 @@ export function openPopup({ id, floating = false, className = "", left, top, wid
   requestAnimationFrame(() => overlay.classList.add("shown"));
 
   let closed = false;
+  const dock = stash ? makeStashable({ overlay, label: stash.label, icon: stash.icon, discard: stash.discard }) : null;
+  const dismiss = () => (dock ? dock.hide() : close());
   const onKey = (e) => {
-    if (e.key === "Escape" && !floating && !frame._qaWin?.minimised && !e.target.closest?.("input, select, textarea")) close();
+    if (e.key === "Escape" && !floating && !dock?.hidden && !frame._qaWin?.minimised && !e.target.closest?.("input, select, textarea")) dismiss();
   };
   function close() {
     if (closed) return;
     closed = true;
+    dock?.remove();
     document.removeEventListener("keydown", onKey);
     overlay.classList.remove("shown");
     setTimeout(() => overlay.remove(), 200);
@@ -58,8 +66,9 @@ export function openPopup({ id, floating = false, className = "", left, top, wid
       e.preventDefault();
     });
   } else {
-    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
+    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) dismiss(); });
   }
-  addWindowControls({ frame, overlay, close });
-  return { overlay, frame, body, close, isClosed: () => closed };
+  addWindowControls({ frame, overlay, close: dismiss });
+  return { overlay, frame, body, close, isClosed: () => closed,
+           hide: () => dock?.hide(), show: () => dock?.show(), isHidden: () => !!dock?.hidden };
 }

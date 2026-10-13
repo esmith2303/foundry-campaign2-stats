@@ -18,7 +18,7 @@
   box-shadow: 0 18px 70px rgba(0,0,0,.85), inset 0 0 0 1px var(--brass-dim), inset 0 0 60px rgba(0,0,0,.6), 0 0 40px rgba(255,170,60,.12) !important;
   color: var(--parch); font-family: 'IM Fell English', 'Crimson Text', serif;
 }
-#cz-casino .qa-win-body { padding: 0 1rem 1rem; }
+#cz-casino.cz-dialog .qa-win-body { padding: 0 1rem 1rem; }
 #cz-casino * { box-sizing: border-box; }
 
 /* The hanging sign */
@@ -39,18 +39,18 @@
 @keyframes czFlicker { 0%,100% { opacity: 1; transform: scale(1); } 40% { opacity: .82; transform: scale(.94, 1.04); } 55% { opacity: .95; } 70% { opacity: .78; transform: scale(1.03, .96); } }
 
 /* Buttons */
-#cz-casino .cz-btn {
+#cz-casino.cz-dialog .cz-btn {
   font-family: 'IM Fell English SC', 'Cinzel', serif !important; font-size: .95rem !important; letter-spacing: .03em; text-transform: none !important;
   padding: .35rem .8rem !important; border-radius: 4px !important; cursor: pointer; width: auto !important; line-height: 1.2 !important; height: auto !important;
   color: var(--parch) !important; background: linear-gradient(180deg, #5a3a1c, #3d2511) !important; border: 1px solid var(--brass-dim) !important;
   box-shadow: inset 0 1px 0 rgba(255,230,170,.18), 0 2px 4px rgba(0,0,0,.4) !important;
 }
-#cz-casino .cz-btn:hover:not(:disabled) { border-color: var(--brass2) !important; color: #fff6dc !important; box-shadow: inset 0 1px 0 rgba(255,230,170,.25), 0 0 10px rgba(232,198,90,.3) !important; }
-#cz-casino .cz-btn.primary { background: linear-gradient(180deg, #d9b45a, #a8832f) !important; color: #2a1a08 !important; border-color: #f3dc8e !important; }
-#cz-casino .cz-btn.primary:hover:not(:disabled) { color: #1a0f04 !important; background: linear-gradient(180deg, #ecc96b, #b88f35) !important; }
-#cz-casino .cz-btn.ghost { background: rgba(0,0,0,.25) !important; }
-#cz-casino .cz-btn.small { font-size: .8rem !important; padding: .15rem .5rem !important; }
-#cz-casino .cz-btn:disabled { opacity: .45; cursor: default; }
+#cz-casino.cz-dialog .cz-btn:hover:not(:disabled) { border-color: var(--brass2) !important; color: #fff6dc !important; box-shadow: inset 0 1px 0 rgba(255,230,170,.25), 0 0 10px rgba(232,198,90,.3) !important; }
+#cz-casino.cz-dialog .cz-btn.primary { background: linear-gradient(180deg, #d9b45a, #a8832f) !important; color: #2a1a08 !important; border-color: #f3dc8e !important; }
+#cz-casino.cz-dialog .cz-btn.primary:hover:not(:disabled) { color: #1a0f04 !important; background: linear-gradient(180deg, #ecc96b, #b88f35) !important; }
+#cz-casino.cz-dialog .cz-btn.ghost { background: rgba(0,0,0,.25) !important; }
+#cz-casino.cz-dialog .cz-btn.small { font-size: .8rem !important; padding: .15rem .5rem !important; }
+#cz-casino.cz-dialog .cz-btn:disabled { opacity: .45; cursor: default; }
 .cz-dialog select { background: #1f130a !important; color: var(--parch) !important; border: 1px solid var(--brass-dim) !important; border-radius: 3px; font-family: inherit; height: auto !important; padding: .15rem .3rem; }
 
 .cz-gmbar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; padding: .45rem .6rem; margin-bottom: .8rem;
@@ -78,14 +78,14 @@
 .cz-game-name { font-family: 'IM Fell English SC', serif; font-size: 1.45rem; color: #3a2210; }
 .cz-game-blurb { font-style: italic; font-size: .92rem; color: #5a4328; margin-bottom: .6rem; min-height: 2.4em; }
 .cz-marks { display: flex; flex-wrap: wrap; gap: .35rem; justify-content: center; min-height: 34px; }
-#cz-casino .cz-mark { display: inline-flex !important; align-items: center; gap: .35rem; padding: .15rem .55rem .15rem .15rem !important; border-radius: 20px !important; width: auto !important; height: auto !important;
+#cz-casino.cz-dialog .cz-mark { display: inline-flex !important; align-items: center; gap: .35rem; padding: .15rem .55rem .15rem .15rem !important; border-radius: 20px !important; width: auto !important; height: auto !important;
   font-family: 'IM Fell English', serif !important; font-size: .9rem !important; text-transform: none !important; letter-spacing: 0 !important; cursor: pointer; }
-#cz-casino .cz-mark.on { background: #3a2210 !important; color: #f4e8c8 !important; border: 1px solid #c9a84c !important; box-shadow: 0 2px 5px rgba(0,0,0,.35) !important; }
-#cz-casino .cz-mark.on:disabled { opacity: 1; cursor: default; }
-#cz-casino .cz-mark.on.mine::after { content: "✓"; color: var(--brass2); margin-left: .1rem; }
-#cz-casino .cz-mark.ghost { background: transparent !important; color: #6a4f2c !important; border: 1px dashed #8a6d2b !important; box-shadow: none !important; }
-#cz-casino .cz-mark.ghost:hover { background: rgba(138,109,43,.15) !important; color: #3a2210 !important; }
-#cz-casino .cz-mark.ghost .cz-portrait { filter: grayscale(.7) opacity(.75); }
+#cz-casino.cz-dialog .cz-mark.on { background: #3a2210 !important; color: #f4e8c8 !important; border: 1px solid #c9a84c !important; box-shadow: 0 2px 5px rgba(0,0,0,.35) !important; }
+#cz-casino.cz-dialog .cz-mark.on:disabled { opacity: 1; cursor: default; }
+#cz-casino.cz-dialog .cz-mark.on.mine::after { content: "✓"; color: var(--brass2); margin-left: .1rem; }
+#cz-casino.cz-dialog .cz-mark.ghost { background: transparent !important; color: #6a4f2c !important; border: 1px dashed #8a6d2b !important; box-shadow: none !important; }
+#cz-casino.cz-dialog .cz-mark.ghost:hover { background: rgba(138,109,43,.15) !important; color: #3a2210 !important; }
+#cz-casino.cz-dialog .cz-mark.ghost .cz-portrait { filter: grayscale(.7) opacity(.75); }
 .cz-gm-pick { margin-top: .5rem; background: #f4e8c8 !important; color: #3a2210 !important; }
 .cz-party { background: rgba(0,0,0,.28); border: 1px solid #4d3019; border-radius: 6px; padding: .6rem .8rem; }
 .cz-party-row { display: flex; align-items: center; gap: .55rem; padding: .3rem 0; border-bottom: 1px dotted #4d3019; }
@@ -133,19 +133,40 @@
 .cz-bet-line { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; margin-top: .35rem; }
 .cz-as { font-size: .9rem; display: flex; gap: .4rem; align-items: center; margin-bottom: .35rem; }
 
-/* Chips */
-.cz-rack { display: flex; gap: .35rem; flex-wrap: wrap; }
-#cz-casino .cz-rack-chip { background: none !important; border: none !important; padding: 0 !important; width: auto !important; height: auto !important; box-shadow: none !important; cursor: pointer; border-radius: 50% !important; }
-#cz-casino .cz-rack-chip.on .cz-chip { transform: translateY(-3px); box-shadow: 0 0 0 2px var(--brass2), 0 4px 8px rgba(0,0,0,.6); }
-.cz-chip { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; font: 700 11px 'JetBrains Mono', monospace;
-  color: #fff; border: 3px dashed rgba(255,255,255,.75); box-shadow: 0 0 0 2px rgba(0,0,0,.35), 0 2px 4px rgba(0,0,0,.5); transition: transform .15s; text-shadow: 0 1px 1px rgba(0,0,0,.6); vertical-align: middle; }
-.cz-chip.c1 { background: radial-gradient(#f2f2ee 55%, #d8d8d0 56%); color: #333; border-color: #3a6ab0; text-shadow: none; }
-.cz-chip.c5 { background: radial-gradient(#b8312b 55%, #9a241f 56%); }
-.cz-chip.c10 { background: radial-gradient(#2f5fae 55%, #234a8a 56%); }
-.cz-chip.c25 { background: radial-gradient(#2e8a4e 55%, #22693b 56%); }
-.cz-chip.c100 { background: radial-gradient(#1b1b1b 55%, #000 56%); border-color: var(--brass2); color: var(--brass2); }
-.cz-stake { display: inline-flex; align-items: center; gap: .25rem; font-size: .8rem; color: #e9dcb8; }
-.cz-stake .cz-chip { width: 28px; height: 28px; font-size: 10px; }
+/* Gold coins: stakes, the stake picker and bets on the board */
+.cz-coins {
+  display: inline-flex; align-items: center; justify-content: center; position: relative; vertical-align: middle; flex: none;
+  width: 30px; height: 30px; border-radius: 50%; border: 1px solid #6b4c12;
+  background: radial-gradient(circle at 35% 30%, #fff6c4 0, #f3d36a 22%, #d0a136 58%, #8f6a1a 100%);
+  box-shadow: inset 0 0 0 3px rgba(255,238,170,.32), inset 0 0 0 4px rgba(107,76,18,.35);
+}
+.cz-coins.h2 { box-shadow: inset 0 0 0 3px rgba(255,238,170,.32), inset 0 0 0 4px rgba(107,76,18,.35), 0 3px 0 #b8892a, 0 4px 0 #5c4210; margin-bottom: 4px; }
+.cz-coins.h3 { box-shadow: inset 0 0 0 3px rgba(255,238,170,.32), inset 0 0 0 4px rgba(107,76,18,.35), 0 3px 0 #b8892a, 0 4px 0 #5c4210, 0 7px 0 #b8892a, 0 8px 0 #5c4210; margin-bottom: 8px; }
+.cz-coins.h4 { box-shadow: inset 0 0 0 3px rgba(255,238,170,.32), inset 0 0 0 4px rgba(107,76,18,.35), 0 3px 0 #b8892a, 0 4px 0 #5c4210, 0 7px 0 #b8892a, 0 8px 0 #5c4210, 0 11px 0 #b8892a, 0 12px 0 #5c4210; margin-bottom: 12px; }
+.cz-coin-top { font: 700 10px 'JetBrains Mono', monospace; color: #4a3208; text-shadow: 0 1px 0 rgba(255,240,190,.7); letter-spacing: -.02em; }
+.cz-stake { display: inline-flex; align-items: center; gap: .3rem; font-size: .8rem; color: #e9dcb8; }
+.cz-stake-picker { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .7rem; }
+.cz-stake-field { display: inline-flex; align-items: center; gap: .4rem; padding: .2rem .5rem .2rem .3rem; border-radius: 22px;
+  background: rgba(0,0,0,.35); border: 1px solid var(--brass-dim); }
+#cz-casino.cz-dialog .cz-stake-input {
+  width: 4.6rem; height: 1.8rem !important; padding: 0 .3rem !important; text-align: right; border: none !important; outline: none !important;
+  background: transparent !important; color: var(--brass2) !important; font: 700 1.05rem 'JetBrains Mono', monospace !important; box-shadow: none !important;
+}
+#cz-casino.cz-dialog .cz-stake-input::placeholder { color: #8a7a5a; }
+.cz-stake-unit { font-family: 'JetBrains Mono', monospace; font-size: .8rem; color: #b8a888; }
+.cz-coin-btns { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+#cz-casino.cz-dialog .cz-coin-btn {
+  width: 40px !important; height: 40px !important; min-width: 40px; padding: 0 !important; margin: 0; border-radius: 50% !important; cursor: pointer;
+  display: inline-flex !important; align-items: center; justify-content: center; text-transform: none !important; letter-spacing: -.02em !important;
+  font: 700 12px 'JetBrains Mono', monospace !important; color: #4a3208 !important; text-shadow: 0 1px 0 rgba(255,240,190,.7) !important;
+  border: 1px solid #6b4c12 !important; background: radial-gradient(circle at 35% 30%, #fff6c4 0, #f3d36a 22%, #d0a136 58%, #8f6a1a 100%) !important;
+  box-shadow: inset 0 0 0 3px rgba(255,238,170,.32), inset 0 0 0 4px rgba(107,76,18,.35), 0 3px 0 #5c4210, 0 4px 6px rgba(0,0,0,.45) !important;
+  transition: filter .12s ease, box-shadow .12s ease;
+}
+#cz-casino.cz-dialog .cz-coin-btn:hover { filter: brightness(1.12); box-shadow: inset 0 0 0 3px rgba(255,238,170,.45), inset 0 0 0 4px rgba(107,76,18,.35), 0 3px 0 #5c4210, 0 0 12px rgba(255,214,110,.7) !important; }
+#cz-casino.cz-dialog .cz-coin-btn:active { filter: brightness(.95); }
+.cz-racecard .cz-stake-field { background: #3a2210; }
+.cz-racecard .cz-stake-unit { color: #d9c79a; }
 
 /* Cards */
 .cz-hand { display: flex; gap: 0; min-height: 70px; align-items: flex-end; }
@@ -200,28 +221,30 @@
 .cz-rgrid { grid-row: 1; grid-column: 2; display: grid; grid-template-columns: repeat(12, 1fr) 46px; gap: 3px; }
 .cz-dozens { grid-row: 2; grid-column: 2; display: grid; grid-template-columns: repeat(3, 1fr) 46px; gap: 3px; }
 .cz-evens { grid-row: 3; grid-column: 2; display: grid; grid-template-columns: repeat(6, 1fr) 46px; gap: 3px; }
-#cz-casino .cz-cell {
+#cz-casino.cz-dialog .cz-cell {
   position: relative; min-height: 40px; height: auto !important; width: auto !important; padding: 2px !important; border-radius: 3px !important; cursor: pointer;
   display: flex !important; flex-direction: column; align-items: center; justify-content: center; text-transform: none !important; letter-spacing: 0 !important;
   font: 700 .95rem 'IM Fell English', serif !important; color: #f4efe0 !important; background: transparent !important;
   border: 1px solid rgba(232,198,90,.55) !important; box-shadow: none !important;
 }
-#cz-casino .cz-cell.num.red { background: rgba(163,36,31,.88) !important; }
-#cz-casino .cz-cell.num.black { background: rgba(20,20,20,.88) !important; }
-#cz-casino .cz-cell.num.green { background: rgba(30,122,70,.95) !important; }
-#cz-casino .cz-cell.zero { height: 100% !important; }
-#cz-casino .cz-cell:hover:not(:disabled) { box-shadow: inset 0 0 0 2px var(--brass2) !important; }
-#cz-casino .cz-cell:disabled { cursor: default; opacity: 1; }
-#cz-casino .cz-cell.hit { box-shadow: inset 0 0 0 3px var(--brass2), 0 0 14px rgba(232,198,90,.8) !important; animation: czPulse 1.2s ease-in-out 3; }
+#cz-casino.cz-dialog .cz-cell.num.red { background: rgba(163,36,31,.88) !important; }
+#cz-casino.cz-dialog .cz-cell.num.black { background: rgba(20,20,20,.88) !important; }
+#cz-casino.cz-dialog .cz-cell.num.green { background: rgba(30,122,70,.95) !important; }
+#cz-casino.cz-dialog .cz-cell.zero { height: 100% !important; }
+#cz-casino.cz-dialog .cz-cell:hover:not(:disabled) { box-shadow: inset 0 0 0 2px var(--brass2) !important; }
+#cz-casino.cz-dialog .cz-cell:disabled { cursor: default; opacity: 1; }
+#cz-casino.cz-dialog .cz-cell.hit { box-shadow: inset 0 0 0 3px var(--brass2), 0 0 14px rgba(232,198,90,.8) !important; animation: czPulse 1.2s ease-in-out 3; }
 @keyframes czPulse { 50% { filter: brightness(1.6); } }
 .cz-cell-label { pointer-events: none; }
 .cz-cell-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 1px; pointer-events: none; }
 .cz-diamond { display: inline-block; width: 16px; height: 16px; transform: rotate(45deg); border: 1px solid #f4efe0; }
 .cz-diamond.red { background: #a3241f; } .cz-diamond.black { background: #141414; }
-.cz-dot { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 3px; border-radius: 9px; font: 700 9px 'JetBrains Mono', monospace; color: #111; border: 1px solid rgba(0,0,0,.5); box-shadow: 0 1px 2px rgba(0,0,0,.5); }
-.cz-dot.key { min-width: 12px; height: 12px; padding: 0; }
-.cz-dot.p0 { background: #f0c75e; } .cz-dot.p1 { background: #8fd3ff; } .cz-dot.p2 { background: #f59ad0; } .cz-dot.p3 { background: #b6f28c; } .cz-dot.p4 { background: #ffb37a; } .cz-dot.p5 { background: #d0b8ff; }
-.cz-dot.draft { opacity: .75; border-style: dashed; }
+.cz-dot { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 3px; border-radius: 10px;
+  font: 700 9px 'JetBrains Mono', monospace; color: #4a3208; text-shadow: 0 1px 0 rgba(255,240,190,.6);
+  background: radial-gradient(circle at 35% 30%, #fff6c4 0, #f3d36a 25%, #d0a136 65%, #8f6a1a 100%); border: 2px solid var(--ring, #6b4c12); box-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.cz-dot.key { min-width: 14px; height: 14px; padding: 0; }
+.cz-dot.p0 { --ring: #f0c75e; } .cz-dot.p1 { --ring: #8fd3ff; } .cz-dot.p2 { --ring: #f59ad0; } .cz-dot.p3 { --ring: #b6f28c; } .cz-dot.p4 { --ring: #ffb37a; } .cz-dot.p5 { --ring: #d0b8ff; }
+.cz-dot.draft { opacity: .8; border-style: dashed; }
 .cz-dot.won { box-shadow: 0 0 0 2px #fff, 0 0 10px rgba(255,255,255,.8); }
 
 /* Lizard races */
@@ -281,11 +304,6 @@
 .cz-result-net { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 1rem; }
 .cz-result.win { border-color: var(--brass); box-shadow: 0 0 14px rgba(232,198,90,.25); } .cz-result.win .cz-result-net { color: #e8c65a; }
 .cz-result.loss .cz-result-net { color: #e07a6a; } .cz-result.even .cz-result-net { color: #ccc; }
-
-/* "Back to the casino" button when the window has been closed */
-#cz-pill { position: fixed; right: 320px; bottom: 16px; z-index: 9999; padding: .5rem .9rem; border-radius: 20px; cursor: pointer; width: auto;
-  font-family: 'IM Fell English SC', 'Cinzel', serif; font-size: 1rem; color: #2a1a08; background: linear-gradient(180deg, #ecc96b, #b88f35);
-  border: 1px solid #f3dc8e; box-shadow: 0 4px 14px rgba(0,0,0,.6), 0 0 16px rgba(232,198,90,.35); }
 
 /* Chat receipt */
 .cz-receipt .cz-receipt-headline { font-family: 'IM Fell English SC', 'Cinzel', serif; font-size: 1.05rem; text-align: center; margin-bottom: .3rem; }
