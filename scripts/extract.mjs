@@ -113,6 +113,10 @@ export function actorIdFromUuid(uuid) {
 const ENTITIES = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&#x27;": "'", "&apos;": "'" };
 const decode = (t) => t.replace(/&(?:amp|lt|gt|quot|apos|#39|#x27);/g, (e) => ENTITIES[e]);
 
+/** The Dungeon Master's own stats (DM achievements) are kept under this pseudo-character. */
+export const DM_ID = "dungeon-master";
+export const DM_NAME = "Dungeon Master";
+
 /** The weapon / spell / feature name on a dnd5e item card (null if none). */
 export function itemNameFromCard(message) {
   const html = String(message?.content ?? "");
@@ -204,6 +208,9 @@ function outcomeTypeFor(rollType) {
  *   surge_summon (the 05–08 "friendly creature" result, amount = the d4)
  *   unicorn (that d4 was a 4) · use (an item / spell / feature card, item = name)
  *   revive (healed a party member up from 0 HP)
+ *   dm_damage / dm_down / dm_crit / dm_casino (the DM's side, under DM_ID: damage
+ *   dealt to the party, party members dropped to 0 HP, monster crits on the
+ *   party, the casino's take in cp)
  */
 export function extractMessage(message, ctx, itemFor = null, link = {}) {
   const messageId = message.id ?? message._id;
@@ -217,8 +224,8 @@ export function extractMessage(message, ctx, itemFor = null, link = {}) {
   const abilityUse = flags[MODULE_ID]?.abilityUse;
   const speakerId = message.speaker?.actor || null;
 
-  const tracked = (actorId) => !!actorId && (ctx.includeNpcs || ctx.isPlayerCharacter(actorId));
-  const nameOf = (actorId, fallback) => ctx.actorName(actorId, fallback) || fallback || "Unknown";
+  const tracked = (actorId) => !!actorId && (actorId === DM_ID || ctx.includeNpcs || ctx.isPlayerCharacter(actorId));
+  const nameOf = (actorId, fallback) => (actorId === DM_ID ? DM_NAME : ctx.actorName(actorId, fallback) || fallback || "Unknown");
   const resolve = (uuid) => actorIdFromUuid(uuid) ?? ctx.resolveActorId?.(uuid) ?? null;
 
   const diceCounts = new Map();   // "actorId|faces|value" → count
@@ -299,6 +306,10 @@ export function extractMessage(message, ctx, itemFor = null, link = {}) {
       const fumble = typeof midi.isFumble === "boolean" ? midi.isFumble : d20 === 1;
       if (crit) addOutcome(speakerId, "crit", true, "atk", alias, 1, { item });
       if (fumble) addOutcome(speakerId, "fumble", true, "atk", alias, 1, { item });
+      // The DM's side: a monster's critical hit on the party
+      if (crit && !ctx.isPlayerCharacter(speakerId) && targets.some(t => { const id = resolve(t?.uuid); return !!id && ctx.isPlayerCharacter(id); })) {
+        addOutcome(DM_ID, "dm_crit", true, "atk", DM_NAME, 1);
+      }
     }
 
     // Heals: one per healing activity used
@@ -337,6 +348,11 @@ export function extractMessage(message, ctx, itemFor = null, link = {}) {
       }
       if (tgtParty) {
         r.byType.forEach(([type, amt], j) => addOutcome(tgt, "damage_taken", true, `hp${i}t${j}`, null, amt, { detail: type }));
+        // The DM's side: damage dealt to the party by anything that isn't a party member
+        if (!(src && ctx.isPlayerCharacter(src))) {
+          addOutcome(DM_ID, "dm_damage", true, `hp${i}`, DM_NAME, r.amount);
+          if (r.oldHP > 0 && r.newHP <= 0) addOutcome(DM_ID, "dm_down", true, `hp${i}`, DM_NAME, 1);   // dropped to 0 HP
+        }
         if (src && src !== tgt && ctx.isPlayerCharacter(src)) addOutcome(src, "friendly_fire", true, `hp${i}`, null, r.amount);
         return;
       }
@@ -453,6 +469,7 @@ export function extractMessage(message, ctx, itemFor = null, link = {}) {
       const extra = { detail: casino.game ?? null, item: casino.casino ?? null };
       addOutcome(l.actorId, "wager", true, `c${i}`, null, stake, extra);
       addOutcome(l.actorId, "gamble", back > stake, `c${i}`, null, back - stake, extra);
+      if (tracked(l.actorId)) addOutcome(DM_ID, "dm_casino", stake > back, `c${i}`, DM_NAME, stake - back, extra);   // the house's take
     });
   }
 

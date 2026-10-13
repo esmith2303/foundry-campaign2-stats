@@ -119,6 +119,20 @@ export const ACHIEVEMENTS = [
   { id: "healthAndSafety", group: "Personal", character: "Felldoh", icon: "fas fa-triangle-exclamation", name: "Health and Safety Violation",
     tiers: [50, 100], desc: (t) => `Cause ${t} wild magic surges`, value: (c) => n(c, "surge") },
 
+  // ── The Dungeon Master ──────────────────────────────────────────────────
+  { id: "painTrain", group: "DM", character: "Dungeon Master", icon: "fas fa-dragon", name: "Pain Train",
+    tiers: [2000, 5000, 10000], desc: (t) => `Deal ${t.toLocaleString()} damage to the party`, value: (c) => sum(c, "dm_damage") },
+  { id: "behindTheScreen", group: "DM", character: "Dungeon Master", icon: "fas fa-dice-d20", name: "Behind the Screen",
+    tiers: [25], desc: (t) => `Land ${t} critical hits on the party`, value: (c) => n(c, "dm_crit") },
+  { id: "leaveAMark", group: "DM", character: "Dungeon Master", icon: "fas fa-burst", name: "That'll Leave a Mark",
+    tiers: [1], desc: () => "Hit a player for 30+ damage in one go", value: (c) => (max(c, "dm_damage") >= 30 ? 1 : 0) },
+  { id: "hitTheDeck", group: "DM", character: "Dungeon Master", icon: "fas fa-person-falling", name: "Hit the Deck",
+    tiers: [10, 25, 50], desc: (t) => `Drop party members to 0 HP ${t} times`, value: (c) => n(c, "dm_down") },
+  { id: "longGame", group: "DM", character: "Dungeon Master", icon: "fas fa-hourglass-half", name: "The Long Game",
+    tiers: [50, 100], desc: (t) => `Run ${t} sessions`, value: (c) => c.sessions ?? 0 },
+  { id: "houseEdge", group: "DM", character: "Dungeon Master", icon: "fas fa-scale-unbalanced", name: "House Edge",
+    tiers: [500], desc: (t) => `Win ${t} gp off the party at the casino`, value: (c) => Math.max(0, sum(c, "dm_casino") / 100) },
+
   // ── Hidden until unlocked ─────────────────────────────────────────────────
   { id: "friendlyFire", group: "Hidden", icon: "fas fa-person-falling-burst", name: "Friendly Fire", hidden: true,
     tiers: [1], desc: () => "Damage a party member", value: (c) => n(c, "friendly_fire") },

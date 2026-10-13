@@ -289,6 +289,10 @@ in the module settings ("Achievements"). The dashboard shows them in a
 - **Personal achievements.** Each character also has three of their own that
   only they can earn (`character` in the catalog). One set is stored encoded so
   its player can't spoil it by reading the code.
+- **The Dungeon Master** has a few of their own too, about the party's
+  suffering and the casino's takings (never deaths). Their cards post like
+  anyone's, and their cabinet only appears on the dashboard once they've
+  earned one.
 - **New achievements added in an update** that a character has already earned
   are recorded silently too, so only new progress gets a card.
 - **Nothing is listed until someone earns it.** Players only ever see

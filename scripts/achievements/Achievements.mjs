@@ -23,7 +23,7 @@ import { MODULE_ID, escapeHtml, partyCharacters } from "../abilities/shared.mjs"
 import { isPrimaryGM } from "../QuickActions.mjs";
 import { chatContext } from "../StatsCollector.mjs";
 import { analyseMessage, evaluate, newUnlocks } from "./engine.mjs";
-import { linkInfo, buildLinks } from "../extract.mjs";
+import { linkInfo, buildLinks, DM_ID, DM_NAME } from "../extract.mjs";
 import { ACHIEVEMENTS, achievementById, tierName, ROMAN } from "./catalog.mjs";
 
 const STORE = "achievementStore";
@@ -114,12 +114,12 @@ async function run() {
       catch (e) { console.warn(`${MODULE_ID} | achievements: skipped a message`, e); c.item = null; }
       c.obj = null;
     }
-    const party = partyCharacters().map(a => a.id);
+    const party = [...partyCharacters().map(a => a.id), DM_ID];   // the DM has achievements too
     const result = evaluate({
       items: [...cache.values()].map(c => c.item).filter(Boolean),
       baseline, sessions: (baseline?.uploads ?? []).map(Number), party,
       isParty: (id) => party.includes(id),
-      nameOf: (id) => game.actors.get(id)?.name ?? null,
+      nameOf: displayName,
     });
     await award(result, party);
   } finally {
@@ -171,7 +171,7 @@ async function award(result, party) {
   // Save first: if posting a card fails, it's lost rather than repeated
   await game.settings.set(MODULE_ID, STORE, store);
   for (const p of posts) {
-    const actor = game.actors.get(p.actorId);
+    const actor = p.actorId === DM_ID ? { id: DM_ID, name: DM_NAME, dm: true } : game.actors.get(p.actorId);
     if (!actor) continue;
     const open = p.unlocks.filter(u => !achievementById(u.id)?.whisper);
     const secret = p.unlocks.filter(u => achievementById(u.id)?.whisper);
@@ -192,7 +192,7 @@ export function recordedSilently() {
   const messageId = "achievements-recorded";
   const outcomes = [];
   for (const [actorId, list] of Object.entries(store.silent)) {
-    const actorName = game.actors.get(actorId)?.name;
+    const actorName = displayName(actorId);
     if (!actorName) continue;
     for (const [id, tier] of Object.entries(list)) {
       const a = achievementById(id);
@@ -232,6 +232,8 @@ function itemHtml(u, earned, compact = false) {
     </div>`;
 }
 
+const displayName = (id) => (id === DM_ID ? DM_NAME : game.actors.get(id)?.name ?? null);
+
 async function postCard(actor, list, earned, { whisper = false } = {}) {
   const ribbon = `<i class="fas fa-trophy"></i> Achievement${list.length > 1 ? "s" : ""} unlocked`;
   const content = `
@@ -243,11 +245,11 @@ async function postCard(actor, list, earned, { whisper = false } = {}) {
         <button type="button" class="qa-ach-reveal" data-qa-ach-reveal><i class="fas fa-eye"></i> Show to everyone</button>${PRIVATE_END}` : ""}
     </div>`;
   const data = {
-    speaker: ChatMessage.getSpeaker({ actor }),
+    speaker: actor.dm ? { alias: DM_NAME } : ChatMessage.getSpeaker({ actor }),
     content,
     flags: { [MODULE_ID]: { achievement: { actorId: actor.id, unlocks: list.map(u => ({ id: u.id, tier: u.tier, name: achievementById(u.id)?.name })) } } },
   };
-  if (whisper) data.whisper = game.users.filter(u => u.isGM || actor.testUserPermission(u, "OWNER")).map(u => u.id);
+  if (whisper) data.whisper = game.users.filter(u => u.isGM || (!actor.dm && actor.testUserPermission(u, "OWNER"))).map(u => u.id);
   return ChatMessage.create(data);
 }
 

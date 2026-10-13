@@ -8,7 +8,7 @@
  *   - one-off moments and streaks (two natural 20s in a row, five misses in a
  *     row, a stabilised death save…): found in the chat log in order
  */
-import { extractMessage, keptD20s, actorIdFromUuid, readHpEntry, MODULE_ID } from "../extract.mjs";
+import { extractMessage, keptD20s, actorIdFromUuid, readHpEntry, MODULE_ID, DM_ID } from "../extract.mjs";
 import { ACHIEVEMENTS } from "./catalog.mjs";
 
 export const emptyCounters = () => ({ types: {}, items: {}, shop: { spentCp: 0, items: 0, haggles: 0 } });
@@ -145,12 +145,16 @@ export function evaluate({ items, baseline = null, sessions = [], party = [], is
     }
   }
 
+  // Sessions run: days with an upload (two uploads in one night are one session)
+  const sessionDays = new Set(sessions.map(ms => new Date(ms).toDateString())).size;
   const out = {};
   for (const id of party) {
+    counters[id].sessions = sessionDays;
     const earned = {};
     for (const a of ACHIEVEMENTS) {
       // Personal achievements only count for their own character
-      const mine = !a.character || String(nameOf(id) ?? "").toLowerCase().startsWith(a.character.toLowerCase());
+      // (the Dungeon Master only has their own)
+      const mine = a.character ? String(nameOf(id) ?? "").toLowerCase().startsWith(a.character.toLowerCase()) : id !== DM_ID;
       const value = mine ? Number(a.value(counters[id], seq[id])) || 0 : 0;
       earned[a.id] = { value, tier: a.tiers.filter(t => value >= t).length };
     }

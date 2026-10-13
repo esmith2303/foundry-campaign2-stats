@@ -18,6 +18,8 @@
     "#trophy-section .cabinet h2 span{font-family:var(--font-mono);font-size:.75rem;color:var(--text-dim);letter-spacing:0}" +
     "#trophy-section .trophy{display:flex;align-items:center;gap:.6rem;padding:.4rem 0;border-bottom:1px solid var(--border)}" +
     "#trophy-section .trophy:last-child{border-bottom:none}" +
+    "#trophy-section .cabinet.dm{border-color:#5a2a2a;background:linear-gradient(180deg,rgba(120,30,30,.12),transparent 60%),var(--bg2)}" +
+    "#trophy-section .cabinet.dm h2{color:#d97a6a}" +
     "#trophy-section .medal{flex:none;width:26px;height:26px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff3c4 0,#e8c65a 35%,#a8832f 100%);box-shadow:0 0 0 1px #0a0a0f,0 0 0 2px var(--gold-dim);display:flex;align-items:center;justify-content:center;font:700 .62rem var(--font-mono);color:#2a1a08}" +
     "#trophy-section .trophy .tname{flex:1;min-width:0;display:flex;flex-direction:column;gap:.1rem}" +
     "#trophy-section .trophy .tdesc{color:#a8a49b;font-size:.85em;font-style:italic;line-height:1.25}" +
@@ -26,6 +28,7 @@
   document.head.appendChild(style);
 
   var ROMAN = ["", "I", "II", "III", "IV", "V", "VI"];
+  var DM_NAME = "Dungeon Master";
   // A centred star for one-off achievements (a text ★ sits low and small)
   var STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z"/></svg>';
   // Achievements with tiers (the medal shows the tier reached)
@@ -63,17 +66,20 @@
         "). If that's a 404, the stats server needs restarting with the latest code.</div></div>";
       return place(section);
     }
+    // The Dungeon Master's cabinet only appears once they've earned something
+    var dmRows = rows.filter(function (r) { return r.actor_name === DM_NAME; });
     rows = keepPCsOnly(rows);
-    if (!rows.length) {
+    if (!rows.length && !dmRows.length) {
       section.innerHTML = title + '<div class="panel"><div class="no-data">No achievements ' + (session === "all" ? "yet" : "this session") + ".</div></div>";
       return place(section);
     }
     var by = {};
     rows.forEach(function (r) { (by[r.actor_name] = by[r.actor_name] || []).push(r); });
     var names = Object.keys(by).sort(function (a, b) { return by[b].length - by[a].length || a.localeCompare(b); });
+    if (dmRows.length) { by[DM_NAME] = dmRows; names.push(DM_NAME); }
     var html = title + '<div class="cabinets">';
     names.forEach(function (n) {
-      html += '<div class="panel cabinet"><h2>' + esc(n) + "<span>" + by[n].length + " earned</span></h2>";
+      html += '<div class="panel cabinet' + (n === DM_NAME ? " dm" : "") + '"><h2>' + esc(n) + "<span>" + by[n].length + " earned</span></h2>";
       by[n].forEach(function (r) {
         var tiered = r.tiered !== undefined ? r.tiered : TIERED[r.id];
         html += '<div class="trophy"><span class="medal">' + (tiered ? ROMAN[r.tier] || r.tier : STAR) + '</span><span class="tname"><span>' + esc(r.name || r.id) +
