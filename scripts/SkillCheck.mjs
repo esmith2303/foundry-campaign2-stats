@@ -21,7 +21,6 @@ export function registerSkillCheck() {
   // so we work on V11/V12 (jQuery) and V13 (HTMLElement).
   Hooks.on("renderChatMessage", onRenderChatMessage);
   Hooks.on("renderChatMessageHTML", onRenderChatMessage);
-  console.log(`${MODULE_ID} | SkillCheck registered for user ${game.user.name} (GM=${game.user.isGM})`);
 }
 
 /** Called from the popover when GM clicks a skill name. */
@@ -701,7 +700,6 @@ function onRenderChatMessage(message, html, _data) {
   card._scProcessed = true;
 
   const isGM = game.user.isGM;
-  console.log(`${MODULE_ID} | renderChatMessage user=${game.user.name} isGM=${isGM} blindDC=${state.blindDC} blindRoll=${state.blindRoll}`);
 
   // ── Apply blind rules for non-GM viewers ──────────────────────────────
   if (!isGM) {
@@ -709,7 +707,6 @@ function onRenderChatMessage(message, html, _data) {
       const dcBadge = card.querySelector(".dc-badge");
       if (dcBadge) {
         dcBadge.textContent = "DC ??";
-        console.log(`${MODULE_ID} | Blind DC applied`);
       }
     }
     if (state.blindRoll) {
@@ -722,7 +719,6 @@ function onRenderChatMessage(message, html, _data) {
       for (const bd of card.querySelectorAll(".roll-breakdown")) bd.remove();
       for (const arrow of card.querySelectorAll(".expand-arrow")) arrow.remove();
       for (const row of card.querySelectorAll(".player-row.rolled")) row.classList.remove("has-breakdown");
-      if (resultEls.length) console.log(`${MODULE_ID} | Blind roll applied to ${resultEls.length} results`);
     }
     if (state.blindDC || state.blindRoll) {
       for (const el of card.querySelectorAll(".roll-status[data-success]")) {
@@ -761,7 +757,6 @@ function onRenderChatMessage(message, html, _data) {
     const actor = game.actors.get(actorId);
 
     const owns = userOwnsActor(actor, game.user);
-    console.log(`${MODULE_ID} | Button for ${actor?.name || actorId}: owns=${owns} (user=${game.user.name})`);
 
     if (!actor || !owns) {
       btn.disabled = true;
@@ -814,7 +809,6 @@ async function onPlayerRollClick(messageId, actorId, mode) {
   //   3. No chat roll cards appear anywhere — players + GM only see our card
   const formula = buildBlindRollFormula(actor, state.skillKey, mode);
   const rollData = actor.getRollData ? actor.getRollData() : {};
-  console.log(`${MODULE_ID} | Roll formula for ${actor.name} (${mode}): ${formula}`);
 
   let roll;
   try {

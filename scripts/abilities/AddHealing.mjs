@@ -1,6 +1,8 @@
 /**
  * Add Healing — heals a party member for an amount or a dice roll (the GM's
- * client applies the HP), or "None" to record the healing in the stats only.
+ * client applies the HP), or "Stats Only" to record the healing without
+ * healing anyone. The healing counts for whichever character is picked as the
+ * healer.
  */
 import { MODULE_ID, escapeHtml, statCard, partyCharacters, hpOf, mountAmountPicker, resolveAmount, assertOwns, assertPartyTarget } from "./shared.mjs";
 
@@ -23,7 +25,7 @@ async function gmApply({ actorId, targetId, amount, roll } = {}, user) {
     if (applied > 0) await target.update({ "system.attributes.hp.value": hp.value + applied });
     row = { actorId: target.id, name: target.name, requested: total, applied, hpAfter: hp.value + applied, hpMax: hp.max };
   } else {
-    row = { actorId: null, name: "No character", requested: total, applied: total };
+    row = { actorId: null, name: "Stats only", requested: total, applied: total };
   }
 
   await ChatMessage.create({
@@ -43,13 +45,32 @@ async function gmApply({ actorId, targetId, amount, roll } = {}, user) {
   return row;
 }
 
-function renderPanel(dialog, { actor, close, back, runAsGM }) {
+function renderPanel(dialog, { actor, casters = [actor], close, back, runAsGM }) {
   const party = partyCharacters();
   const firstHurt = party.find(a => hpOf(a).missing > 0);
+  // Who gets the healing in their stats (players usually only have the one)
+  const healers = casters.length ? casters : [actor];
+  const healerField = healers.length > 1 ? `
+    <div class="field">
+      <div class="field-label">Healing done by</div>
+      <div class="players">
+        ${healers.map(a => `
+          <div class="player-row">
+            <label>
+              <input type="radio" name="qa-healer" value="${a.id}"${a.id === actor.id ? " checked" : ""}>
+              <span>${escapeHtml(a.name)}</span>
+            </label>
+          </div>`).join("")}
+      </div>
+    </div>` : `
+    <div class="field">
+      <div class="field-label">Healing done by ${escapeHtml(actor.name)}</div>
+    </div>`;
   dialog.innerHTML = `
     <div class="title">Add Healing</div>
+    ${healerField}
     <div class="field">
-      <div class="field-label">Heal — by ${escapeHtml(actor.name)}</div>
+      <div class="field-label">Heal</div>
       <div class="players">
         ${party.map(a => { const hp = hpOf(a); const full = hp.missing <= 0; return `
           <div class="player-row${full ? " qa-row-full" : ""}" title="${full ? "Already at full HP" : ""}">
@@ -62,7 +83,7 @@ function renderPanel(dialog, { actor, close, back, runAsGM }) {
         <div class="player-row">
           <label>
             <input type="radio" name="qa-heal-target" value="" data-missing=""${party.length ? "" : " checked"}>
-            <span>None <span class="qa-dim">— stats only, no character is healed</span></span>
+            <span>Stats Only <span class="qa-dim">— no character is healed</span></span>
           </label>
         </div>
       </div>
@@ -83,7 +104,7 @@ function renderPanel(dialog, { actor, close, back, runAsGM }) {
   const refresh = () => {
     const pick = chosen();
     let message = "";
-    if (!pick) message = "Everyone is already at full HP — choose None to record the healing for stats only.";
+    if (!pick) message = "Everyone is already at full HP — choose Stats Only to record the healing without healing anyone.";
     else if (pick.value && picker.mode() === "set") {
       const missing = Number(pick.dataset.missing) || 0, amount = picker.setAmount() || 0;
       if (amount > missing) message = `Only ${missing} HP missing — healing will stop at full HP (+${missing}).`;
@@ -103,7 +124,8 @@ function renderPanel(dialog, { actor, close, back, runAsGM }) {
       const targetId = dialog.querySelector('input[name="qa-heal-target"]:checked')?.value || null;
       const { amount, roll } = await resolveAmount(picker);
       if (!(amount > 0)) throw new Error(roll ? `Rolled ${roll.total} — nothing to heal.` : "Enter an amount.");
-      const res = await runAsGM(APPLY, { actorId: actor.id, targetId, amount, roll: roll ? roll.toJSON() : null });
+      const healerId = dialog.querySelector('input[name="qa-healer"]:checked')?.value || actor.id;
+      const res = await runAsGM(APPLY, { actorId: healerId, targetId, amount, roll: roll ? roll.toJSON() : null });
       ui.notifications.info(`Healing: ${res.name} +${res.applied}${res.applied < res.requested ? ` (${res.requested} rolled, capped at full HP)` : ""}.`);
       close();
     } catch (e) {
@@ -118,7 +140,7 @@ export const AddHealing = {
   label: "Add Healing",
   icon: "fas fa-heart",
   general: true,
-  hint: "Heals a PC",
+  hint: "Stats + Heal PC",
   renderPanel,
   gmActions: { [APPLY]: gmApply },
 };

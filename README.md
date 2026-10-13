@@ -66,7 +66,7 @@ Always at the top, for every character:
 |--------|--------------|
 | Add Kill | Confirm → records a kill for the character. Stats only. |
 | Add Damage | Optional weapon or spell, a set amount or a dice roll (dice buttons + modifier, or type a formula), damage type (defaults to the weapon's, overridable). Stats only — applied to nobody. |
-| Add Healing | Pick a PC (or "None" for stats only) and a set amount or dice roll; the PC is healed (never past max HP). |
+| Add Healing | Pick who did the healing (if you have more than one character), then a PC to heal (or "Stats Only") and a set amount or dice roll; the PC is healed (never past max HP). |
 | Take Damage | A set amount or dice roll, optional damage type, and "Apply to character sheet" (on by default). On: the amount comes straight off HP (temp HP first; resistances, vulnerabilities and immunities are ignored). Off: stats only, for damage already on the sheet. |
 | Add Other | Stats only. +/− counts of attacks, hits (plus an optional biggest hit, which replaces Max Hit only if bigger), crits, fumbles, saves passed and saves failed. Adding hits or fumbles adds attacks and crits add hits; Attacks can then be lowered (even below hits) when the attack is already counted but no hit/miss was (e.g. no target). **Corrections** (Miss → hit, Failed save → passed) fix a result Foundry got wrong, e.g. the wrong AC or DC: they move an already-recorded miss / failed save without adding an attack or save. |
 
@@ -305,6 +305,13 @@ Names, wording and thresholds live in `scripts/achievements/catalog.mjs`.
 The dashboard's Trophy Cabinet is `dashboard/achievements.js`: copy it next to
 `index.html` and add `<script src="achievements.js"></script>` after the other
 add-on scripts.
+
+## Average initiative
+
+Initiative is rolled every round in this game, so the dashboard shows each
+character's average initiative result (not how many times they rolled).
+`dashboard/initiative.js` adds an **Avg Init** column to the Character
+Statistics table: `<script src="initiative.js"></script>`.
 
 ## Wild magic
 

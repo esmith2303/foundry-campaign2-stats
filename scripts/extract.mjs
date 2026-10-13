@@ -207,7 +207,7 @@ function outcomeTypeFor(rollType) {
  *   surge (wild magic surge, amount = the d100) · surge_extreme (a 01 or 100)
  *   surge_summon (the 05–08 "friendly creature" result, amount = the d4)
  *   unicorn (that d4 was a 4) · use (an item / spell / feature card, item = name)
- *   revive (healed a party member up from 0 HP)
+ *   revive (healed a party member up from 0 HP) · initiative (amount = the result)
  *   dm_damage / dm_down / dm_crit / dm_casino (the DM's side, under DM_ID: damage
  *   dealt to the party, party members dropped to 0 HP, monster crits on the
  *   party, the casino's take in cp)
@@ -351,7 +351,8 @@ export function extractMessage(message, ctx, itemFor = null, link = {}) {
         // The DM's side: damage dealt to the party by anything that isn't a party member
         if (!(src && ctx.isPlayerCharacter(src))) {
           addOutcome(DM_ID, "dm_damage", true, `hp${i}`, DM_NAME, r.amount);
-          if (r.oldHP > 0 && r.newHP <= 0) addOutcome(DM_ID, "dm_down", true, `hp${i}`, DM_NAME, 1);   // dropped to 0 HP
+          // Dropped to 0 HP (and it stuck: see buildLinks)
+          if (r.oldHP > 0 && r.newHP <= 0 && !(link.undoneDowns ?? []).includes(tgt)) addOutcome(DM_ID, "dm_down", true, `hp${i}`, DM_NAME, 1);
         }
         if (src && src !== tgt && ctx.isPlayerCharacter(src)) addOutcome(src, "friendly_fire", true, `hp${i}`, null, r.amount);
         return;
@@ -362,6 +363,13 @@ export function extractMessage(message, ctx, itemFor = null, link = {}) {
       if (r.killed) addOutcome(src, "kill", true, `hp${i}`, null, 1, { item });
       if (r.oldHP > 0 && r.oldHP <= 5 && r.amount >= 25) addOutcome(src, "overkill", true, `hp${i}`, null, r.amount, { item });
     });
+  }
+
+  // ── Initiative (rolled every round in this game): the result, without the
+  // fractional tie-breaker Foundry adds (14.09 → 14)
+  if (speakerId && (flags.core?.initiativeRoll || dnd.roll?.type === "initiative")) {
+    const total = asRollData(message.rolls?.[0])?.total;
+    if (Number.isFinite(Number(total))) addOutcome(speakerId, "initiative", true, "init", message.speaker?.alias, Math.floor(Number(total)));
   }
 
   // ── Natural 20s and 1s (kept d20s; death saves left out — they're secret) ──
@@ -590,13 +598,16 @@ function loneD4(m) {
  *     minutes (before their next surge), and the surge belongs to the
  *     character that player usually speaks as
  * linkInfo() is the little each message contributes (cheap to keep per message);
- * buildLinks() turns them all into (messageId) → { itemFor, surgeD4, mainCharacter }.
+ *   - a drop to 0 HP only counts if it stuck (the character's next HP change
+ *     doesn't start above 0)
+ * buildLinks() turns them all into (messageId) → { itemFor, undoneDowns, surgeD4, mainCharacter }.
  */
 export function linkInfo(m) {
   const hp = Array.isArray(m?.flags?.["midi-qol"]?.undoDamage);
   const actor = m?.speaker?.actor ?? null;
   const damageItem = actor && !hp && (m.rolls || []).some(r => asRollData(r)?.class === "DamageRoll") ? itemNameFromCard(m) : null;
-  return { ts: Number(m?.timestamp) || 0, author: m?.author ?? m?.user ?? null, actor, damageItem, hp, surge: surgeRoll(m), d4: loneD4(m) };
+  const hpEntries = hp ? m.flags["midi-qol"].undoDamage.map(u => ({ tgt: u?.actorId ?? actorIdFromUuid(u?.actorUuid), oldHP: Number(u?.oldHP) || 0, newHP: Number(u?.newHP) || 0 })) : null;
+  return { ts: Number(m?.timestamp) || 0, author: m?.author ?? m?.user ?? null, actor, damageItem, hp, hpEntries, surge: surgeRoll(m), d4: loneD4(m) };
 }
 
 export function buildLinks(infos, ctx, windowMs = 180000) {
@@ -614,7 +625,17 @@ export function buildLinks(infos, ctx, windowMs = 180000) {
   const links = new Map();
   list.forEach(([id, x], i) => {
     if (x.hp) {
-      links.set(id, { itemFor: (actorId) => {
+      // Drops to 0 HP that didn't stick: the character's next HP change starts
+      // above 0 (the damage was undone or corrected, e.g. the wrong target)
+      const undone = [];
+      for (const e of x.hpEntries ?? []) {
+        if (!e.tgt || !(e.oldHP > 0 && e.newHP <= 0)) continue;
+        for (let j = i + 1; j < list.length; j++) {
+          const next = (list[j][1].hpEntries ?? []).find(f => f.tgt === e.tgt);
+          if (next) { if (next.oldHP > 0) undone.push(e.tgt); break; }
+        }
+      }
+      links.set(id, { undoneDowns: undone, itemFor: (actorId) => {
         let best = null;
         for (const c of cards.get(actorId) ?? []) {
           const dt = Math.abs(c.ts - x.ts);

@@ -799,6 +799,17 @@ app.get("/api/achievements", authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Average initiative per character (initiative is rolled every round here)
+app.get("/api/initiative", authMiddleware, async (req, res) => {
+  try {
+    let q = db("chat_outcomes").select("actor_name").avg("amount as avg").count("* as n")
+      .where("outcome_type", "initiative").groupBy("actor_name");
+    q = applyRange(q, await sessionRange(req.query.session));
+    q = applyExcludes(q, req.query.exclude, req.query.excludeWorlds);
+    res.json((await q).map(r => ({ actor_name: r.actor_name, avg: Math.round(Number(r.avg) * 10) / 10, n: Number(r.n) || 0 })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Wild magic: surges, creatures summoned and unicorns, per character
 app.get("/api/wild-magic", authMiddleware, async (req, res) => {
   try {

@@ -108,7 +108,7 @@ async function run() {
     const links = buildLinks([...cache].map(([id, c]) => [id, c.info]), ctx);
     for (const [id, c] of cache) {
       const l = links(id);
-      const key = c.info.surge !== null ? `${l.surgeD4}|${l.mainCharacter}` : "";
+      const key = c.info.surge !== null ? `${l.surgeD4}|${l.mainCharacter}` : c.info.hp ? (l.undoneDowns ?? []).join(",") : "";
       if (c.item && c.key === key) continue;
       try { c.item = analyseMessage(c.obj ?? docs.get(id).toObject(), ctx, l); c.key = key; }
       catch (e) { console.warn(`${MODULE_ID} | achievements: skipped a message`, e); c.item = null; }

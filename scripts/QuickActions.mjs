@@ -247,7 +247,7 @@ export function openQuickActions() {
 
   function showAbility(ability, item) {
     dialog.innerHTML = "";
-    ability.renderPanel(dialog, { actor: caster, item, close, back: showList, runAsGM });
+    ability.renderPanel(dialog, { actor: caster, casters, item, close, back: showList, runAsGM });
   }
 
   showList();
